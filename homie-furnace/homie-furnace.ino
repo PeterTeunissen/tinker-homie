@@ -1,25 +1,32 @@
 #include <stdio.h>
 #include <Homie.h>
 
-const int SEND_INTERVAL = 60;
-const int LED_TIME = 500;
-unsigned long DEBOUNCE_DELAY = 50;
-const int LED_PIN = 2;
-const int BUTTON_PIN = 0;
+const int NUM_PINS = 4;
+const int SEND_INTERVAL = 60;             // Send the state every 60 seconds anyway
+const unsigned long DEBOUNCE_DELAY = 50;  // 50 ms for debouncing
+const int LED_TIME = 500;                 // Blue led turns on 500ms for every mqtt send
+const int LED_PIN = 2;                    // Blue led is in pin 2
+const int BUTTON_PIN = 0;                 // Reset button is on pin 0
 
 const int W_PIN = 12;
 const int W2_PIN = 14;
 const int Y_PIN = 4;
 const int G_PIN = 5;
 
-unsigned long ledOn = 0;
+unsigned long ledOn = 0;      // Holds the time the led was turned on
 
-struct ButtonState {
+int pins[NUM_PINS] = {
+  W_PIN,W2_PIN,Y_PIN,G_PIN
+};
+
+char names[5][NUM_PINS] = {"W","W2","Y","G"};
+
+struct ButtonState {        // Info for one input
   int pin;
   char name[5];
   unsigned long lastTimeSent = 0;
   int currentState;
-  int debounceStart;
+  unsigned long debounceStart;
   int debounceState;
 };
 
@@ -29,21 +36,17 @@ void setup() {
   Serial.begin(115200);
   pinMode(LED_PIN,OUTPUT);
   pinMode(BUTTON_PIN,INPUT);
-  pinMode(W_PIN,INPUT_PULLUP);
-  pinMode(W2_PIN,INPUT_PULLUP);
-  pinMode(Y_PIN,INPUT_PULLUP);
-  pinMode(G_PIN,INPUT_PULLUP);
-
+  for(int i=0;i<NUM_PINS;i++) {
+    pinMode(pins[i],INPUT_PULLUP); 
+  }
   digitalWrite(LED_PIN,HIGH);
 
   Homie_setFirmware("homie-hvac", "1.0.0");
   Homie.setSetupFunction(setupHandler).setLoopFunction(loopHandler);
   Homie.setLedPin(LED_PIN,LOW).setResetTrigger(BUTTON_PIN, LOW, 5000);
-  hvacNode.advertise("W");
-  hvacNode.advertise("W2");
-  hvacNode.advertise("Y");
-  hvacNode.advertise("G");
-  
+  for(int i=0;i<NUM_PINS;i++) {  
+    hvacNode.advertise(names[i]);
+  }  
   Homie.setup();
   Homie.getLogger() << "Setup done" << endl;
 }
@@ -51,43 +54,28 @@ void setup() {
 ButtonState buttons[4];
 
 void setupHandler() {
-  strcpy(buttons[0].name,"W");
-  buttons[0].pin = W_PIN;
-  buttons[0].currentState = digitalRead(buttons[0].pin);
-  buttons[0].debounceState = buttons[0].currentState;
-  buttons[0].debounceStart = millis();
-  buttons[0].lastTimeSent = 0;
-    
-  strcpy(buttons[1].name,"W2");
-  buttons[1].pin = W2_PIN;
-  buttons[1].currentState = digitalRead(buttons[1].pin);
-  buttons[1].debounceState = buttons[1].currentState;
-  buttons[1].debounceStart = millis();
-  buttons[1].lastTimeSent = 0;
-  
-  strcpy(buttons[2].name,"Y");
-  buttons[2].pin = Y_PIN;
-  buttons[2].currentState = digitalRead(buttons[2].pin);
-  buttons[2].debounceState = buttons[2].currentState;
-  buttons[2].debounceStart = millis();
-  buttons[2].lastTimeSent = 0;
-  
-  strcpy(buttons[3].name,"G");
-  buttons[3].pin = G_PIN;
-  buttons[3].currentState = digitalRead(buttons[3].pin);
-  buttons[3].debounceState = buttons[3].currentState;
-  buttons[3].debounceStart = millis();
-  buttons[3].lastTimeSent = 0;
+  for(int i=0;i<NUM_PINS;i++) {
+    initButton(pins[i],names[i],&buttons[i]);    
+  }
+}
+
+void initButton(int pin, char *name, ButtonState *state) {
+  state->pin = pin;
+  strcpy(state->name,name);
+  state->currentState = digitalRead(state->pin);
+  state->debounceState = state->currentState;
+  state->debounceStart = millis();
+  state->lastTimeSent = 0;
 }
 
 void loopHandler() {       
-  for(byte i=0;i<4;i++) {
+  for(byte i=0;i<NUM_PINS;i++) {
     monitorButton(&buttons[i]);
   }
 }
 
 void monitorButton(ButtonState *state) {
-
+  
   int reading = digitalRead(state->pin);
 
   if (reading != state->currentState && reading != state->debounceState) {
@@ -95,6 +83,7 @@ void monitorButton(ButtonState *state) {
     state->debounceState = reading;
   }
 
+  // Check the state after DEBOUNCE_DELAY and send an update if it's stable.
   if (((millis() - state->debounceStart) > DEBOUNCE_DELAY) && (reading==state->debounceState)) {
     if (reading != state->currentState) {
       state->currentState = reading;
@@ -102,23 +91,29 @@ void monitorButton(ButtonState *state) {
       state->lastTimeSent = millis();
     }
   }
-  
+
+  // Force the send of the state every SEND_INTERVAL seconds, just so the host has the current values.
   if (millis() - state->lastTimeSent > SEND_INTERVAL * 1000UL || state->lastTimeSent == 0) {
     sendState(state);
     state->lastTimeSent = millis();
   }
 
-  if (millis()-ledOn  > LED_TIMEL) {  
+  // Turn LED off after time expires
+  if (millis()-ledOn  > LED_TIME) {  
     digitalWrite(LED_PIN,HIGH);
   }
 }
 
 void sendState(ButtonState *state) {
   char b[100];
+  // Make a JSON message with some info.
   sprintf(b,"{\"signal\": \"%s\", \"pin\":%d, \"value\":%d }",state->name,state->pin,state->currentState);
   Homie.getLogger() << "Sending: " << b << endl;
   hvacNode.setProperty(String(state->name)).send(b);  
+
+  // Turn on the LED to indicate we sent something.
   digitalWrite(LED_PIN,LOW);
+  // Start the LED timer,
   ledOn = millis();
 }
 
