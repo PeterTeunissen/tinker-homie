@@ -37,7 +37,7 @@ void setup() {
   pinMode(LED_PIN,OUTPUT);
   pinMode(BUTTON_PIN,INPUT);
   for(int i=0;i<NUM_PINS;i++) {
-    pinMode(pins[i],INPUT_PULLUP); 
+    pinMode(pins[i],INPUT); 
   }
   digitalWrite(LED_PIN,HIGH);
 
