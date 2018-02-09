@@ -15,12 +15,24 @@
 
 const int NUM_DOORS = 2;
 const int DEBOUNCE_DELAY = 50;  // 50 ms for debouncing
-const int LED_PIN = 13;
+const int LED_PIN = LED_BUILTIN;
 const int BUTTON_PIN = 0;
 
-int relayPin[2]= {4,5};
-int openPin[2] = {12,14};
-int closedPin[2] = {10,11};
+#define D0 16
+#define D1   5
+#define D2   4
+#define D3   0
+#define D4   2
+#define D5   14
+#define D6   12
+#define D7   13
+#define D8   15
+#define D9   3
+#define D10  1
+
+int relayPin[2]= {D2,D5};
+int openPin[2] = {D0,D3};
+int closedPin[2] = {D1,D4};
 
 Bounce openDebouncer1 = Bounce();
 Bounce openDebouncer2 = Bounce();
@@ -38,7 +50,7 @@ int lastOpenState2 = -1;
 int lastClosedState1 = -1;
 int lastClosedState2 = -1;
 
-SoftwareSerial mp3(5,6);
+SoftwareSerial mp3(D6,D7);
 
 HomieNode sound("hodor", "sound");
 

@@ -120,6 +120,8 @@ void sendMP3Command(char c) {
       Serial.println(" 3 = Play folder 3");
       Serial.println(" 4 = Play folder 4");
       Serial.println(" 5 = Play folder 5");
+      Serial.println(" 6 = Play 01/02");
+      Serial.println(" 7 = Play 02/04");
       Serial.println(" S = Sleep");
       Serial.println(" W = Wake up");
       Serial.println(" r = Reset");
@@ -206,6 +208,16 @@ void sendMP3Command(char c) {
     case '5':
       Serial.println("Play folder 5");
       sendCommand(CMD_FOLDER_CYCLE, 0x0501);
+      break;
+
+    case '6':
+      Serial.println("Play 01/02");
+      sendCommand(CMD_PLAY_FOLDER_FILE, 0x0102);
+      break;
+
+    case '7':
+      Serial.println("Play 02/04");
+      sendCommand(CMD_PLAY_FOLDER_FILE, 0x0204);
       break;
 
     case 'S':
