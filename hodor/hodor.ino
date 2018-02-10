@@ -2,82 +2,99 @@
 #include <Homie.h>
 #include <SoftwareSerial.h>
 
-#define CMD_PLAY_W_INDEX 0X03
-#define CMD_SET_VOLUME 0X06
-#define CMD_SEL_DEV 0X09
-#define DEV_TF 0X02
-#define CMD_PLAY 0X0D
-#define CMD_PAUSE 0X0E
-#define CMD_SINGLE_CYCLE 0X19
-#define SINGLE_CYCLE_ON 0X00
-#define SINGLE_CYCLE_OFF 0X01
-#define CMD_PLAY_W_VOL 0X22
+// ---- MP3 Player commands ---
 
-const int NUM_DOORS = 2;
+#define CMD_NEXT_SONG     0X01  // Play next song.
+#define CMD_PREV_SONG     0X02  // Play previous song.
+#define CMD_PLAY_W_INDEX  0X03
+#define CMD_VOLUME_UP     0X04
+#define CMD_VOLUME_DOWN   0X05
+#define CMD_SET_VOLUME    0X06
+
+#define CMD_SNG_CYCL_PLAY 0X08  // Single Cycle Play.
+#define CMD_SEL_DEV       0X09
+#define CMD_SLEEP_MODE    0X0A
+#define CMD_WAKE_UP       0X0B
+#define CMD_RESET         0X0C
+#define CMD_PLAY          0X0D
+#define CMD_PAUSE         0X0E
+#define CMD_PLAY_FOLDER_FILE 0X0F
+
+#define CMD_STOP_PLAY     0X16
+#define CMD_FOLDER_CYCLE  0X17
+#define CMD_SHUFFLE_PLAY  0x18 //
+#define CMD_SET_SNGL_CYCL 0X19 // Set single cycle.
+
+#define CMD_SET_DAC 0X1A
+#define DAC_ON  0X00
+#define DAC_OFF 0X01
+
+#define CMD_PLAY_W_VOL    0X22
+#define CMD_PLAYING_N     0x4C
+#define CMD_QUERY_STATUS      0x42
+#define CMD_QUERY_VOLUME      0x43
+#define CMD_QUERY_FLDR_TRACKS 0x4e
+#define CMD_QUERY_TOT_TRACKS  0x48
+#define CMD_QUERY_FLDR_COUNT  0x4f
+
+/************ Options **************************/
+#define DEV_TF            0X02
+
+const int NUM_DOORS = 1;
 const int DEBOUNCE_DELAY = 50;  // 50 ms for debouncing
 const int LED_PIN = LED_BUILTIN;
 const int BUTTON_PIN = 0;
 
-#define D0 16
-#define D1   5
-#define D2   4
-#define D3   0
-#define D4   2
-#define D5   14
-#define D6   12
-#define D7   13
-#define D8   15
-#define D9   3
-#define D10  1
-
-int relayPin[2]= {D2,D5};
-int openPin[2] = {D0,D3};
-int closedPin[2] = {D1,D4};
+int openPin[2] = {5,12};
+int closedPin[2] = {4,13};
+int relayPin[2]= {14,15};
 
 Bounce openDebouncer1 = Bounce();
 Bounce openDebouncer2 = Bounce();
 Bounce closeDebouncer1 = Bounce();  
 Bounce closeDebouncer2 = Bounce();  
     
-HomieNode relay1("hodor","relay/1");
-HomieNode relay2("hodor","relay/2");
+HomieNode switches1("switches1","switches1");
+HomieNode switches2("switches2","switches2");
 
-HomieNode switches1("hodor","switches/1");
-HomieNode switches2("hodor","switches/2");
+HomieNode relay1("relay1","relay1");
+HomieNode relay2("relay2","relay2");
+
+HomieNode sound("sound", "sound");
 
 int lastOpenState1 = -1;
 int lastOpenState2 = -1;
 int lastClosedState1 = -1;
 int lastClosedState2 = -1;
 
-SoftwareSerial mp3(D6,D7);
+SoftwareSerial mp3(0,2);
 
-HomieNode sound("hodor", "sound");
 
 bool soundOnHandler(HomieRange range, String value) {
-
   sound.setProperty("play").send(value);
-  Homie.getLogger() << "Play track " << value << endl;
+  int16_t hexNumber = value.toInt(); 
+  Homie.getLogger() << "Play track " << value << " converted: " << hexNumber << endl;
+  mp3Command(CMD_PLAY_FOLDER_FILE,hexNumber);
   return true;
 }
 
 bool relay1OnHandler(HomieRange range, String value) {
-  if (value != "true" && value != "false") return false;
+  if (value != "on" && value != "off") return false;
 
-  bool on = (value == "true");
+  bool on = (value == "on");
   digitalWrite(relayPin[0], on ? HIGH : LOW);
-  relay1.setProperty("active").send(value);
+  relay1.setProperty("activate").send(value);
   Homie.getLogger() << "Relay 1 is " << (on ? "on" : "off") << endl;
 
   return true;
 }
 
 bool relay2OnHandler(HomieRange range, String value) {
-  if (value != "true" && value != "false") return false;
+  if (value != "on" && value != "off") return false;
 
-  bool on = (value == "true");
+  bool on = (value == "on");
   digitalWrite(relayPin[1], on ? HIGH : LOW);
-  relay2.setProperty("active").send(value);
+  relay2.setProperty("activate").send(value);
   Homie.getLogger() << "Relay 2 is " << (on ? "on" : "off") << endl;
 
   return true;
@@ -86,18 +103,17 @@ bool relay2OnHandler(HomieRange range, String value) {
 void setup() {
   Serial.begin(115200);
   mp3.begin(9600);
-  delay(500);
-  mp3Command(CMD_SEL_DEV, DEV_TF);//select the TF card  
-  delay(200);
-  mp3Command(CMD_PLAY_W_VOL, 0X0F01);//play the first song with volume 15 class
+  delay(1000);
+  mp3Command(CMD_SEL_DEV, DEV_TF);
+  delay(1000);
+  mp3Command(CMD_SET_VOLUME, 30);
+  delay(1000);
   
   pinMode(LED_PIN,OUTPUT);
-  pinMode(BUTTON_PIN,INPUT);
-  digitalWrite(LED_PIN,HIGH);
 
   Homie_setFirmware("homie-hodor", "1.0.0");
   Homie.setSetupFunction(setupHandler).setLoopFunction(loopHandler);
-  Homie.setLedPin(LED_PIN,LOW).setResetTrigger(BUTTON_PIN, LOW, 5000);
+  Homie.setLedPin(LED_PIN,LOW);//setResetTrigger(BUTTON_PIN, LOW, 5000);
 
   relay1.advertise("activate").settable(relay1OnHandler);
   relay2.advertise("activate").settable(relay2OnHandler);
@@ -109,52 +125,57 @@ void setup() {
 
 
 void setupHandler() {
-  pinMode(openPin[0],INPUT);
+  pinMode(openPin[0],INPUT_PULLUP);
   openDebouncer1.attach(openPin[0]);
   openDebouncer1.interval(DEBOUNCE_DELAY);
 
-  pinMode(openPin[1],INPUT);
+  pinMode(openPin[1],INPUT_PULLUP);
   openDebouncer2.attach(openPin[1]);
   openDebouncer2.interval(DEBOUNCE_DELAY);
 
-  pinMode(closedPin[0],INPUT);
+  pinMode(closedPin[0],INPUT_PULLUP);
   closeDebouncer1.attach(closedPin[0]);
   closeDebouncer1.interval(DEBOUNCE_DELAY);
 
-  pinMode(closedPin[1],INPUT);
+  pinMode(closedPin[1],INPUT_PULLUP);
   closeDebouncer2.attach(closedPin[1]);
   closeDebouncer2.interval(DEBOUNCE_DELAY);
 
   pinMode(relayPin[0],OUTPUT);
   pinMode(relayPin[1],OUTPUT);
-
+  
   digitalWrite(relayPin[0],LOW);
   digitalWrite(relayPin[1],LOW);
 }
 
 void loopHandler() {
   int openState1 = openDebouncer1.read();
+   
   if (openState1 != lastOpenState1) {
     lastOpenState1 = openState1;
-    switches1.setProperty("open").send(openState1>0? "true" : "false" );
+    switches1.setProperty("open").send(openState1>0? "false" : "true" );
+    Homie.getLogger() << "Open sensor 1 is " << (openState1>0? "false" : "true") << endl;
   }
 
   int openState2 = openDebouncer2.read();
   if (openState2 != lastOpenState2) {
     lastOpenState2 = openState2;
-    switches2.setProperty("open").send(openState2>0? "true" : "false" );
+    switches2.setProperty("open").send(openState2>0? "false" : "true" );
+    Homie.getLogger() << "Open sensor 2 is " << (openState2>0? "false" : "true") << endl;
   }
 
   int closedState1 = closeDebouncer1.read();
   if (closedState1 != lastClosedState1) {
     lastClosedState1 = closedState1;
-    switches1.setProperty("closed").send(closedState1>0? "true" : "false" );
+    switches1.setProperty("closed").send(closedState1>0? "false" : "true" );
+    Homie.getLogger() << "Closed sensor 1 is " << (closedState1>0? "false" : "true") << endl;
   }
 
   int closedState2 = closeDebouncer2.read();
   if (closedState2 != lastClosedState2) {
     lastClosedState2 = closedState2;
-    switches2.setProperty("closed").send(closedState2>0? "true" : "false" );
+    switches2.setProperty("closed").send(closedState2>0? "false" : "true" );
+    Homie.getLogger() << "Closed sensor 2 is " << (closedState2>0? "false" : "true") << endl;
   }
 }
 
@@ -170,8 +191,6 @@ void loop() {
 void mp3Command(int8_t command, int16_t dat) {
 
   uint8_t cmdBuf[8];
-
-  delay(20);
 
   cmdBuf[0] = 0x7e; //starting byte
   cmdBuf[1] = 0xff; //version
