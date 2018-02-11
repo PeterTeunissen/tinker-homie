@@ -41,7 +41,7 @@
 #define DEV_TF            0X02
 
 const int NUM_DOORS = 1;
-const int DEBOUNCE_DELAY = 50;  // 50 ms for debouncing
+const int DEBOUNCE_DELAY = 200;  // 200 ms for debouncing
 const int LED_PIN = LED_BUILTIN;
 const int BUTTON_PIN = 0;
 
@@ -67,14 +67,23 @@ int lastOpenState2 = -1;
 int lastClosedState1 = -1;
 int lastClosedState2 = -1;
 
-SoftwareSerial mp3(0,2);
-
+SoftwareSerial mp3(0,2); // Used to send messages to the mp3 player
 
 bool soundOnHandler(HomieRange range, String value) {
+  Homie.getLogger() << "Sound command raw:" << value  << endl;
+
+  String sCommand = getStringPartByNr(value, '-', 0);
+  String sOption = getStringPartByNr(value, '-', 1);
+
+  Homie.getLogger() << "sCommand:" << sCommand << " sOption:" << sOption << endl;
+
+  int8_t command = sCommand.toInt();
+  int16_t option = sOption.toInt(); 
+
+  mp3Command(command,option);
+
   sound.setProperty("play").send(value);
-  int16_t hexNumber = value.toInt(); 
-  Homie.getLogger() << "Play track " << value << " converted: " << hexNumber << endl;
-  mp3Command(CMD_PLAY_FOLDER_FILE,hexNumber);
+  Homie.getLogger() << "Sound command: " << command << ", option: " << option << endl;
   return true;
 }
 
@@ -82,7 +91,7 @@ bool relay1OnHandler(HomieRange range, String value) {
   if (value != "on" && value != "off") return false;
 
   bool on = (value == "on");
-  digitalWrite(relayPin[0], on ? HIGH : LOW);
+  digitalWrite(relayPin[0], on ? LOW : HIGH);
   relay1.setProperty("activate").send(value);
   Homie.getLogger() << "Relay 1 is " << (on ? "on" : "off") << endl;
 
@@ -93,7 +102,7 @@ bool relay2OnHandler(HomieRange range, String value) {
   if (value != "on" && value != "off") return false;
 
   bool on = (value == "on");
-  digitalWrite(relayPin[1], on ? HIGH : LOW);
+  digitalWrite(relayPin[1], on ? LOW : HIGH);
   relay2.setProperty("activate").send(value);
   Homie.getLogger() << "Relay 2 is " << (on ? "on" : "off") << endl;
 
@@ -205,3 +214,23 @@ void mp3Command(int8_t command, int16_t dat) {
   }
 }
 
+String getStringPartByNr(String data, char separator, int index) {
+    int stringData = 0;        //variable to count data part nr 
+    String dataPart = "";      //variable to hole the return text
+
+    for(int i = 0; i<data.length()-1; i++) {    //Walk through the text one letter at a time
+        if(data[i]==separator) {
+            //Count the number of times separator character appears in the text
+            stringData++;
+        } else if(stringData==index) {
+            //get the text when separator is the rignt one
+            dataPart.concat(data[i]);
+        } else if(stringData>index) {
+            //return text and stop if the next separator appears - to save CPU-time
+            return dataPart;
+            break;
+        }
+    }
+    //return text if this is the last part
+    return dataPart;
+}
