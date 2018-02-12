@@ -75,7 +75,7 @@ bool soundOnHandler(HomieRange range, String value) {
   String sCommand = getStringPartByNr(value, '-', 0);
   String sOption = getStringPartByNr(value, '-', 1);
 
-  Homie.getLogger() << "sCommand:" << sCommand << " sOption:" << sOption << endl;
+  Homie.getLogger() << "Sound sCommand:" << sCommand << ", sOption:" << sOption << endl;
 
   int8_t command = sCommand.toInt();
   int16_t option = sOption.toInt(); 
@@ -219,13 +219,13 @@ String getStringPartByNr(String data, char separator, int index) {
     String dataPart = "";      //variable to hole the return text
 
     for(int i = 0; i<data.length()-1; i++) {    //Walk through the text one letter at a time
-        if(data[i]==separator) {
+        if (data[i]==separator) {
             //Count the number of times separator character appears in the text
             stringData++;
-        } else if(stringData==index) {
+        } else if (stringData==index) {
             //get the text when separator is the rignt one
             dataPart.concat(data[i]);
-        } else if(stringData>index) {
+        } else if (stringData>index) {
             //return text and stop if the next separator appears - to save CPU-time
             return dataPart;
             break;
