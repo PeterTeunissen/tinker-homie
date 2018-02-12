@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <Homie.h>
 #include <SoftwareSerial.h>
+#include "PCF8574.h"
 #include <Wire.h>
 
 // ---- MP3 Player commands ---
