@@ -69,6 +69,8 @@ int lastOpenState2 = -1;
 int lastClosedState1 = -1;
 int lastClosedState2 = -1;
 
+PCF8574 expander(D4,D5,0x20);
+
 SoftwareSerial mp3(0,2); // Used to send messages to the mp3 player
 
 bool soundOnHandler(HomieRange range, String value) {
@@ -119,11 +121,11 @@ void setup() {
   delay(1000);
   mp3Command(CMD_SET_VOLUME, 30);
   delay(1000);
-
-  Wire.begin(D4,D5);
   
   pinMode(LED_PIN,OUTPUT);
 
+  expander.begin(0xFF);
+  
   Homie_setFirmware("homie-hodor", "1.0.0");
   Homie.setSetupFunction(setupHandler).setLoopFunction(loopHandler);
   Homie.setLedPin(LED_PIN,LOW);//setResetTrigger(BUTTON_PIN, LOW, 5000);
