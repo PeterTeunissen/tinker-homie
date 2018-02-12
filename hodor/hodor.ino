@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <Homie.h>
 #include <SoftwareSerial.h>
+#include <Wire.h>
 
 // ---- MP3 Player commands ---
 
@@ -117,6 +118,8 @@ void setup() {
   delay(1000);
   mp3Command(CMD_SET_VOLUME, 30);
   delay(1000);
+
+  Wire.begin(D4,D5);
   
   pinMode(LED_PIN,OUTPUT);
 
