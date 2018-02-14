@@ -43,19 +43,15 @@
 #define DEV_TF            0X02
 
 const int NUM_DOORS = 1;
-const int DEBOUNCE_DELAY = 200;  // 200 ms for debouncing
+const int DEBOUNCE_DELAY = 100;  // 200 ms for debouncing
 const int LED_PIN = LED_BUILTIN;
 const int BUTTON_PIN = 0;
+const int EXPANDER_ADDRESS = 0x20;
 
-int openPin[2] = {5,12};
-int closedPin[2] = {4,13};
-int relayPin[2]= {14,15};
-
-Bounce openDebouncer1 = Bounce();
-Bounce openDebouncer2 = Bounce();
-Bounce closeDebouncer1 = Bounce();  
-Bounce closeDebouncer2 = Bounce();  
-    
+int openPin[2] = {PIN_0,PIN_2};
+int closedPin[2] = {PIN_1,PIN_3};
+int relayPin[2]= {PIN_4,PIN_5};
+   
 HomieNode switches1("switches1","switches1");
 HomieNode switches2("switches2","switches2");
 
@@ -69,9 +65,13 @@ int lastOpenState2 = -1;
 int lastClosedState1 = -1;
 int lastClosedState2 = -1;
 
-PCF8574 expander(D4,D5,0x20);
+volatile int ISR_Trapped = 0; // Connected to D7
+int isrHandled = false;
+int isrStartTime = -1;
+ 
+PCF8574 expander(D5,D6,EXPANDER_ADDRESS);
 
-SoftwareSerial mp3(0,2); // Used to send messages to the mp3 player
+SoftwareSerial mp3(D4,D3); // Used to send messages to the mp3 player
 
 bool soundOnHandler(HomieRange range, String value) {
   Homie.getLogger() << "Sound command raw:" << value  << endl;
@@ -95,7 +95,7 @@ bool relay1OnHandler(HomieRange range, String value) {
   if (value != "on" && value != "off") return false;
 
   bool on = (value == "on");
-  digitalWrite(relayPin[0], on ? LOW : HIGH);
+  expander.write(relayPin[0], on ? LOW : HIGH);
   relay1.setProperty("activate").send(value);
   Homie.getLogger() << "Relay 1 is " << (on ? "on" : "off") << endl;
 
@@ -106,11 +106,15 @@ bool relay2OnHandler(HomieRange range, String value) {
   if (value != "on" && value != "off") return false;
 
   bool on = (value == "on");
-  digitalWrite(relayPin[1], on ? LOW : HIGH);
+  expander.write(relayPin[1], on ? LOW : HIGH);
   relay2.setProperty("activate").send(value);
   Homie.getLogger() << "Relay 2 is " << (on ? "on" : "off") << endl;
 
   return true;
+}
+
+void expanderInterrupt() {    
+  ISR_Trapped = true;
 }
 
 void setup() {
@@ -124,7 +128,9 @@ void setup() {
   
   pinMode(LED_PIN,OUTPUT);
 
-  expander.begin(0xFF);
+  expander.begin();
+
+  attachInterrupt(D7, expanderInterrupt, LOW);
   
   Homie_setFirmware("homie-hodor", "1.0.0");
   Homie.setSetupFunction(setupHandler).setLoopFunction(loopHandler);
@@ -139,68 +145,54 @@ void setup() {
 }
 
 
-void setupHandler() {
-  pinMode(openPin[0],INPUT_PULLUP);
-  openDebouncer1.attach(openPin[0]);
-  openDebouncer1.interval(DEBOUNCE_DELAY);
+void setupHandler() { 
 
-  pinMode(openPin[1],INPUT_PULLUP);
-  openDebouncer2.attach(openPin[1]);
-  openDebouncer2.interval(DEBOUNCE_DELAY);
-
-  pinMode(closedPin[0],INPUT_PULLUP);
-  closeDebouncer1.attach(closedPin[0]);
-  closeDebouncer1.interval(DEBOUNCE_DELAY);
-
-  pinMode(closedPin[1],INPUT_PULLUP);
-  closeDebouncer2.attach(closedPin[1]);
-  closeDebouncer2.interval(DEBOUNCE_DELAY);
-
-  pinMode(relayPin[0],OUTPUT);
-  pinMode(relayPin[1],OUTPUT);
-  
-  digitalWrite(relayPin[0],LOW);
-  digitalWrite(relayPin[1],LOW);
 }
 
 void loopHandler() {
-  int openState1 = openDebouncer1.read();
-   
-  if (openState1 != lastOpenState1) {
-    lastOpenState1 = openState1;
-    switches1.setProperty("open").send(openState1>0? "false" : "true" );
-    Homie.getLogger() << "Open sensor 1 is " << (openState1>0? "false" : "true") << endl;
+  if (ISR_Trapped==true) {
+    ISR_Trapped = false;
+    isrStartTime = millis();
+    isrHandled = false;
   }
 
-  int openState2 = openDebouncer2.read();
-  if (openState2 != lastOpenState2) {
-    lastOpenState2 = openState2;
-    switches2.setProperty("open").send(openState2>0? "false" : "true" );
-    Homie.getLogger() << "Open sensor 2 is " << (openState2>0? "false" : "true") << endl;
-  }
+  if (millis()-isrStartTime > DEBOUNCE_DELAY && isrHandled==false) {
 
-  int closedState1 = closeDebouncer1.read();
-  if (closedState1 != lastClosedState1) {
-    lastClosedState1 = closedState1;
-    switches1.setProperty("closed").send(closedState1>0? "false" : "true" );
-    Homie.getLogger() << "Closed sensor 1 is " << (closedState1>0? "false" : "true") << endl;
-  }
+    isrHandled = true;
 
-  int closedState2 = closeDebouncer2.read();
-  if (closedState2 != lastClosedState2) {
-    lastClosedState2 = closedState2;
-    switches2.setProperty("closed").send(closedState2>0? "false" : "true" );
-    Homie.getLogger() << "Closed sensor 2 is " << (closedState2>0? "false" : "true") << endl;
+    int openState1 = expander.read(openPin[0]);         
+    if (openState1 != lastOpenState1) {
+      lastOpenState1 = openState1;
+      switches1.setProperty("open").send(openState1>0? "false" : "true" );
+      Homie.getLogger() << "Open sensor 1 is " << (openState1>0? "false" : "true") << endl;
+    }
+  
+    int openState2 = expander.read(openPin[1]);
+    if (openState2 != lastOpenState2) {
+      lastOpenState2 = openState2;
+      switches2.setProperty("open").send(openState2>0? "false" : "true" );
+      Homie.getLogger() << "Open sensor 2 is " << (openState2>0? "false" : "true") << endl;
+    }
+  
+    int closedState1 = expander.read(closedPin[0]);    
+    if (closedState1 != lastClosedState1) {
+      lastClosedState1 = closedState1;
+      switches1.setProperty("closed").send(closedState1>0? "false" : "true" );
+      Homie.getLogger() << "Closed sensor 1 is " << (closedState1>0? "false" : "true") << endl;
+    }
+  
+    int closedState2 = expander.read(closedPin[1]);
+    if (closedState2 != lastClosedState2) {
+      lastClosedState2 = closedState2;
+      switches2.setProperty("closed").send(closedState2>0? "false" : "true" );
+      Homie.getLogger() << "Closed sensor 2 is " << (closedState2>0? "false" : "true") << endl;
+    }
   }
 }
 
 
 void loop() {
   Homie.loop();
-  openDebouncer1.update();
-  openDebouncer2.update();
-  closeDebouncer1.update();
-  closeDebouncer2.update();
 }
 
 void mp3Command(int8_t command, int16_t dat) {

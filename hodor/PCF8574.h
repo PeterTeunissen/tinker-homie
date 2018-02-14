@@ -25,6 +25,14 @@
 #define PCF8574_PIN_ERROR   0x81
 #define PCF8574_I2C_ERROR   0x82
 
+#define PIN_0 0
+#define PIN_1 1
+#define PIN_2 2
+#define PIN_3 3
+#define PIN_4 4
+#define PIN_5 5
+#define PIN_6 6
+#define PIN_7 7
 
 class PCF8574
 {
