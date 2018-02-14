@@ -154,9 +154,12 @@ void loopHandler() {
     ISR_Trapped = false;
     isrStartTime = millis();
     isrHandled = false;
+    Homie.getLogger() << "ISR timer Started" << endl;
   }
 
   if (millis()-isrStartTime > DEBOUNCE_DELAY && isrHandled==false) {
+
+    Homie.getLogger() << "ISR Servicing" << endl;
 
     isrHandled = true;
 
