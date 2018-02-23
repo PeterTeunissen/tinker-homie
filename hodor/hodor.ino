@@ -48,6 +48,10 @@ const int LED_PIN = LED_BUILTIN;
 const int BUTTON_PIN = 0;
 const int EXPANDER_ADDRESS = 0x20;
 
+const int INT_PIN = 13;
+const int RX_PIN = 0;
+const int TX_PIN = 2;
+
 int openPin[2] = {PIN_0,PIN_2};
 int closedPin[2] = {PIN_1,PIN_3};
 int relayPin[2]= {PIN_4,PIN_5};
@@ -65,13 +69,13 @@ int lastOpenState2 = -1;
 int lastClosedState1 = -1;
 int lastClosedState2 = -1;
 
-volatile int ISR_Trapped = 0; // Connected to D7
+volatile int ISR_Trapped = false; // Connected to D7
 int isrHandled = false;
 int isrStartTime = -1;
  
 PCF8574 expander(D5,D6,EXPANDER_ADDRESS);
 
-SoftwareSerial mp3(D4,D3); // Used to send messages to the mp3 player
+SoftwareSerial mp3(RX_PIN,TX_PIN); // Used to send messages to the mp3 player
 
 bool soundOnHandler(HomieRange range, String value) {
   Homie.getLogger() << "Sound command raw:" << value  << endl;
@@ -113,7 +117,7 @@ bool relay2OnHandler(HomieRange range, String value) {
   return true;
 }
 
-void expanderInterrupt() {    
+void expanderInterrupt(void) {    
   ISR_Trapped = true;
 }
 
@@ -130,7 +134,7 @@ void setup() {
 
   expander.begin();
 
-  attachInterrupt(D7, expanderInterrupt, LOW);
+  attachInterrupt(digitalPinToInterrupt(INT_PIN), expanderInterrupt, FALLING);
   
   Homie_setFirmware("homie-hodor", "1.0.0");
   Homie.setSetupFunction(setupHandler).setLoopFunction(loopHandler);
@@ -150,6 +154,13 @@ void setupHandler() {
 }
 
 void loopHandler() {
+
+  if (mp3.available()) {
+    String mp3Response = decodeMP3Answer();
+    sound.setProperty("response").send(mp3Response);
+    Homie.getLogger() << "Sound response: " << mp3Response << endl;
+  }
+  
   if (ISR_Trapped==true) {
     ISR_Trapped = false;
     isrStartTime = millis();
@@ -158,7 +169,6 @@ void loopHandler() {
   }
 
   if (millis()-isrStartTime > DEBOUNCE_DELAY && isrHandled==false) {
-
     Homie.getLogger() << "ISR Servicing" << endl;
 
     isrHandled = true;
@@ -198,6 +208,11 @@ void loop() {
   Homie.loop();
 }
 
+/********************************************************************************/
+/*Function: Send command to the MP3                                             */
+/*Parameter:-int8_t command                                                     */
+/*Parameter:-int16_ dat  parameter for the command                              */
+/********************************************************************************/
 void mp3Command(int8_t command, int16_t dat) {
 
   uint8_t cmdBuf[8];
@@ -213,6 +228,107 @@ void mp3Command(int8_t command, int16_t dat) {
   for(uint8_t i=0; i<8; i++) {
     mp3.write(cmdBuf[i]);
   }
+}
+
+/********************************************************************************/
+/*Function: sanswer. Returns a String answer from mp3 UART module.              */
+/*Parameter:- uint8_t b. void.                                                  */
+/*Return: String. If the answer is well formated answer.                        */
+/********************************************************************************/
+String sanswer(void) {
+  String mp3answer = "";
+  uint8_t first_answer;
+  uint8_t last_answer;
+  
+  // Get only 10 Bytes
+  uint8_t i = 0;
+  while (mp3.available() && (i < 10))
+  {
+    uint8_t b = mp3.read();
+    if (i==0) {
+      first_answer = b;
+    }
+    if (i==9) {
+      last_answer = b;
+    }
+    mp3answer += sbyte2hex(b);
+    i++;
+  }
+
+  // if the answer format is correct.
+  if ((first_answer == 0x7E) && (last_answer == 0xEF))
+  {
+    return mp3answer;
+  }
+
+  return "???: " + mp3answer;
+}
+
+/********************************************************************************/
+/*Function: sbyte2hex. Returns a byte data in HEX format.                       */
+/*Parameter:- uint8_t b. Byte to convert to HEX.                                */
+/*Return: String                                                                */
+/********************************************************************************/
+String sbyte2hex(uint8_t b) {
+  String shex;
+
+  shex = "0X";
+
+  if (b < 16) shex += "0";
+  shex += String(b, HEX);
+  shex += " ";
+  return shex;
+}
+
+/********************************************************************************/
+/*Function decodeMP3Answer: Decode MP3 answer.                                  */
+/*Parameter:-void                                                               */
+/*Return: The decodedAnswer                                                     */
+/********************************************************************************/
+String decodeMP3Answer() {
+  String decodedMP3Answer = "";
+
+  decodedMP3Answer += sanswer();
+
+  switch (decodedMP3Answer.charAt(3)) {
+    case 0x3A:
+      decodedMP3Answer += " -> Memory card inserted.";
+      break;
+
+    case 0x3D:
+      decodedMP3Answer += " -> Completed play num " + String(decodedMP3Answer.charAt(6), DEC);
+      break;
+
+    case 0x40:
+      decodedMP3Answer += " -> Error";
+      break;
+
+    case 0x41:
+      decodedMP3Answer += " -> Data recived correctly. ";
+      break;
+
+    case 0x42:
+      decodedMP3Answer += " -> Status playing: " + String(decodedMP3Answer.charAt(6), DEC);
+      break;
+
+    case 0x48:
+      decodedMP3Answer += " -> File count: " + String(decodedMP3Answer.charAt(6), DEC);
+      break;
+
+    case 0x4C:
+      decodedMP3Answer += " -> Playing: " + String(decodedMP3Answer.charAt(6), DEC);
+      break;
+
+    case 0x4E:
+      decodedMP3Answer += " -> Folder file count: " + String(decodedMP3Answer.charAt(6), DEC);
+      break;
+
+    case 0x4F:
+      decodedMP3Answer += " -> Folder count: " + String(decodedMP3Answer.charAt(6), DEC);
+      break;
+  }
+
+  return decodedMP3Answer;
 }
 
 String getStringPartByNr(String data, char separator, int index) {

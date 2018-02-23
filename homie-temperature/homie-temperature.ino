@@ -7,15 +7,18 @@
 
 const int LED_PIN = 13;
 const int BUTTON_PIN = 0;
+const int MAX_SENSORS = 10;
 
 int NUM_SENSORS = 0;
+int numSensorsSent = 0;
 const int SENSOR_INTERVAL = 60;
 unsigned long lastTimeSent = 0;
 
 OneWire oneWire(ONE_WIRE_BUS_PIN);
 DallasTemperature sensors(&oneWire);
 
-DeviceAddress ds_addr[10];
+float lastTempSent[MAX_SENSORS];
+DeviceAddress ds_addr[MAX_SENSORS];
 
 HomieNode analogNode("temperature", "temperature");
 
@@ -66,10 +69,14 @@ void loopHandler() {
         sensors.setResolution(ds_addr[i], 12);
       }
     }
-    
-    analogNode.setProperty("sensor_count").send(String(NUM_SENSORS));
-    Homie.getLogger() << "Sending: sensor_count:" << String(NUM_SENSORS) << endl;
 
+    if (numSensorsSent!=NUM_SENSORS) {
+      analogNode.setProperty("sensor_count").send(String(NUM_SENSORS));
+      Homie.getLogger() << "Sending: sensor_count:" << String(NUM_SENSORS) << endl;
+    }
+    
+    numSensorsSent = NUM_SENSORS;
+    
     for(int i=0;i<NUM_SENSORS;i++) {
       printTemperature(ds_addr[i],i,NUM_SENSORS);
     }
@@ -89,6 +96,14 @@ void printTemperature(DeviceAddress deviceAddress, int i, int m) {
   float tempC = sensors.getTempC(deviceAddress); 
   Homie.getLogger() << "Sensor: " << i << " ";
 
+  // If same value, don't send it again.
+  if (lastTempSent[i]==tempC) {
+    Homie.getLogger() << "same value, not sending." << endl;
+    return;
+  }
+
+  lastTempSent[i] = tempC;
+  
   char b[100];
   char s_addr[30];
   char hx[5];
@@ -104,11 +119,9 @@ void printTemperature(DeviceAddress deviceAddress, int i, int m) {
     }
     strcat(s_addr,hx);
   }
-  //sprintf(s_addr,"%02X-%02X-%02X-%02X-%02X-%02X-%02X-%02X",deviceAddress[0],deviceAddress[1],deviceAddress[2],deviceAddress[3],deviceAddress[4],deviceAddress[5],deviceAddress[6],deviceAddress[7]);
 
   if (tempC == -127.00) {
     Homie.getLogger() << "Error getting temperature " << endl;
-    //sprintf(b,"{\"sensor\": \"%s\", \"index\":%d, \"total_sensors\": %d, \"temp_C\": \"%s\", \"temp_F\": \"%s\", \"error\": %d}",s_addr,i,m,"error value","error value",1);
     strcpy(outstrC,"\"error value\"");
     strcpy(outstrF,"\"error value\"");
     error = 1;
