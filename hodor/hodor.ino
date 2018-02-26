@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <Homie.h>
 #include <SoftwareSerial.h>
+#include "PCF8574.h"
+#include <Wire.h>
 
 // ---- MP3 Player commands ---
 
@@ -41,19 +43,19 @@
 #define DEV_TF            0X02
 
 const int NUM_DOORS = 1;
-const int DEBOUNCE_DELAY = 200;  // 200 ms for debouncing
+const int DEBOUNCE_DELAY = 100;  // 200 ms for debouncing
 const int LED_PIN = LED_BUILTIN;
 const int BUTTON_PIN = 0;
+const int EXPANDER_ADDRESS = 0x20;
 
-int openPin[2] = {5,12};
-int closedPin[2] = {4,13};
-int relayPin[2]= {14,15};
+const int INT_PIN = 13;
+const int RX_PIN = 0;
+const int TX_PIN = 2;
 
-Bounce openDebouncer1 = Bounce();
-Bounce openDebouncer2 = Bounce();
-Bounce closeDebouncer1 = Bounce();  
-Bounce closeDebouncer2 = Bounce();  
-    
+int openPin[2] = {PIN_0,PIN_2};
+int closedPin[2] = {PIN_1,PIN_3};
+int relayPin[2]= {PIN_4,PIN_5};
+   
 HomieNode switches1("switches1","switches1");
 HomieNode switches2("switches2","switches2");
 
@@ -67,7 +69,13 @@ int lastOpenState2 = -1;
 int lastClosedState1 = -1;
 int lastClosedState2 = -1;
 
-SoftwareSerial mp3(0,2); // Used to send messages to the mp3 player
+volatile int ISR_Trapped = false; // Connected to D7
+int isrHandled = false;
+int isrStartTime = -1;
+ 
+PCF8574 expander(D5,D6,EXPANDER_ADDRESS);
+
+SoftwareSerial mp3(RX_PIN,TX_PIN); // Used to send messages to the mp3 player
 
 bool soundOnHandler(HomieRange range, String value) {
   Homie.getLogger() << "Sound command raw:" << value  << endl;
@@ -91,7 +99,7 @@ bool relay1OnHandler(HomieRange range, String value) {
   if (value != "on" && value != "off") return false;
 
   bool on = (value == "on");
-  digitalWrite(relayPin[0], on ? LOW : HIGH);
+  expander.write(relayPin[0], on ? LOW : HIGH);
   relay1.setProperty("activate").send(value);
   Homie.getLogger() << "Relay 1 is " << (on ? "on" : "off") << endl;
 
@@ -102,11 +110,15 @@ bool relay2OnHandler(HomieRange range, String value) {
   if (value != "on" && value != "off") return false;
 
   bool on = (value == "on");
-  digitalWrite(relayPin[1], on ? LOW : HIGH);
+  expander.write(relayPin[1], on ? LOW : HIGH);
   relay2.setProperty("activate").send(value);
   Homie.getLogger() << "Relay 2 is " << (on ? "on" : "off") << endl;
 
   return true;
+}
+
+void expanderInterrupt(void) {    
+  ISR_Trapped = true;
 }
 
 void setup() {
@@ -120,6 +132,10 @@ void setup() {
   
   pinMode(LED_PIN,OUTPUT);
 
+  expander.begin();
+
+  attachInterrupt(digitalPinToInterrupt(INT_PIN), expanderInterrupt, FALLING);
+  
   Homie_setFirmware("homie-hodor", "1.0.0");
   Homie.setSetupFunction(setupHandler).setLoopFunction(loopHandler);
   Homie.setLedPin(LED_PIN,LOW);//setResetTrigger(BUTTON_PIN, LOW, 5000);
@@ -133,70 +149,70 @@ void setup() {
 }
 
 
-void setupHandler() {
-  pinMode(openPin[0],INPUT_PULLUP);
-  openDebouncer1.attach(openPin[0]);
-  openDebouncer1.interval(DEBOUNCE_DELAY);
+void setupHandler() { 
 
-  pinMode(openPin[1],INPUT_PULLUP);
-  openDebouncer2.attach(openPin[1]);
-  openDebouncer2.interval(DEBOUNCE_DELAY);
-
-  pinMode(closedPin[0],INPUT_PULLUP);
-  closeDebouncer1.attach(closedPin[0]);
-  closeDebouncer1.interval(DEBOUNCE_DELAY);
-
-  pinMode(closedPin[1],INPUT_PULLUP);
-  closeDebouncer2.attach(closedPin[1]);
-  closeDebouncer2.interval(DEBOUNCE_DELAY);
-
-  pinMode(relayPin[0],OUTPUT);
-  pinMode(relayPin[1],OUTPUT);
-  
-  digitalWrite(relayPin[0],LOW);
-  digitalWrite(relayPin[1],LOW);
 }
 
 void loopHandler() {
-  int openState1 = openDebouncer1.read();
-   
-  if (openState1 != lastOpenState1) {
-    lastOpenState1 = openState1;
-    switches1.setProperty("open").send(openState1>0? "false" : "true" );
-    Homie.getLogger() << "Open sensor 1 is " << (openState1>0? "false" : "true") << endl;
+
+  if (mp3.available()) {
+    String mp3Response = decodeMP3Answer();
+    sound.setProperty("response").send(mp3Response);
+    Homie.getLogger() << "Sound response: " << mp3Response << endl;
+  }
+  
+  if (ISR_Trapped==true) {
+    ISR_Trapped = false;
+    isrStartTime = millis();
+    isrHandled = false;
+    Homie.getLogger() << "ISR timer Started" << endl;
   }
 
-  int openState2 = openDebouncer2.read();
-  if (openState2 != lastOpenState2) {
-    lastOpenState2 = openState2;
-    switches2.setProperty("open").send(openState2>0? "false" : "true" );
-    Homie.getLogger() << "Open sensor 2 is " << (openState2>0? "false" : "true") << endl;
-  }
+  if (millis()-isrStartTime > DEBOUNCE_DELAY && isrHandled==false) {
+    Homie.getLogger() << "ISR Servicing" << endl;
 
-  int closedState1 = closeDebouncer1.read();
-  if (closedState1 != lastClosedState1) {
-    lastClosedState1 = closedState1;
-    switches1.setProperty("closed").send(closedState1>0? "false" : "true" );
-    Homie.getLogger() << "Closed sensor 1 is " << (closedState1>0? "false" : "true") << endl;
-  }
+    isrHandled = true;
 
-  int closedState2 = closeDebouncer2.read();
-  if (closedState2 != lastClosedState2) {
-    lastClosedState2 = closedState2;
-    switches2.setProperty("closed").send(closedState2>0? "false" : "true" );
-    Homie.getLogger() << "Closed sensor 2 is " << (closedState2>0? "false" : "true") << endl;
+    int openState1 = expander.read(openPin[0]);         
+    if (openState1 != lastOpenState1) {
+      lastOpenState1 = openState1;
+      switches1.setProperty("open").send(openState1>0? "false" : "true" );
+      Homie.getLogger() << "Open sensor 1 is " << (openState1>0? "false" : "true") << endl;
+    }
+  
+    int openState2 = expander.read(openPin[1]);
+    if (openState2 != lastOpenState2) {
+      lastOpenState2 = openState2;
+      switches2.setProperty("open").send(openState2>0? "false" : "true" );
+      Homie.getLogger() << "Open sensor 2 is " << (openState2>0? "false" : "true") << endl;
+    }
+  
+    int closedState1 = expander.read(closedPin[0]);    
+    if (closedState1 != lastClosedState1) {
+      lastClosedState1 = closedState1;
+      switches1.setProperty("closed").send(closedState1>0? "false" : "true" );
+      Homie.getLogger() << "Closed sensor 1 is " << (closedState1>0? "false" : "true") << endl;
+    }
+  
+    int closedState2 = expander.read(closedPin[1]);
+    if (closedState2 != lastClosedState2) {
+      lastClosedState2 = closedState2;
+      switches2.setProperty("closed").send(closedState2>0? "false" : "true" );
+      Homie.getLogger() << "Closed sensor 2 is " << (closedState2>0? "false" : "true") << endl;
+    }
   }
 }
 
 
 void loop() {
   Homie.loop();
-  openDebouncer1.update();
-  openDebouncer2.update();
-  closeDebouncer1.update();
-  closeDebouncer2.update();
 }
 
+/********************************************************************************/
+/*Function: Send command to the MP3                                             */
+/*Parameter:-int8_t command                                                     */
+/*Parameter:-int16_ dat  parameter for the command                              */
+/********************************************************************************/
 void mp3Command(int8_t command, int16_t dat) {
 
   uint8_t cmdBuf[8];
@@ -212,6 +228,107 @@ void mp3Command(int8_t command, int16_t dat) {
   for(uint8_t i=0; i<8; i++) {
     mp3.write(cmdBuf[i]);
   }
+}
+
+/********************************************************************************/
+/*Function: sanswer. Returns a String answer from mp3 UART module.              */
+/*Parameter:- uint8_t b. void.                                                  */
+/*Return: String. If the answer is well formated answer.                        */
+/********************************************************************************/
+String sanswer(void) {
+  String mp3answer = "";
+  uint8_t first_answer;
+  uint8_t last_answer;
+  
+  // Get only 10 Bytes
+  uint8_t i = 0;
+  while (mp3.available() && (i < 10))
+  {
+    uint8_t b = mp3.read();
+    if (i==0) {
+      first_answer = b;
+    }
+    if (i==9) {
+      last_answer = b;
+    }
+    mp3answer += sbyte2hex(b);
+    i++;
+  }
+
+  // if the answer format is correct.
+  if ((first_answer == 0x7E) && (last_answer == 0xEF))
+  {
+    return mp3answer;
+  }
+
+  return "???: " + mp3answer;
+}
+
+/********************************************************************************/
+/*Function: sbyte2hex. Returns a byte data in HEX format.                       */
+/*Parameter:- uint8_t b. Byte to convert to HEX.                                */
+/*Return: String                                                                */
+/********************************************************************************/
+String sbyte2hex(uint8_t b) {
+  String shex;
+
+  shex = "0X";
+
+  if (b < 16) shex += "0";
+  shex += String(b, HEX);
+  shex += " ";
+  return shex;
+}
+
+/********************************************************************************/
+/*Function decodeMP3Answer: Decode MP3 answer.                                  */
+/*Parameter:-void                                                               */
+/*Return: The decodedAnswer                                                     */
+/********************************************************************************/
+String decodeMP3Answer() {
+  String decodedMP3Answer = "";
+
+  decodedMP3Answer += sanswer();
+
+  switch (decodedMP3Answer.charAt(3)) {
+    case 0x3A:
+      decodedMP3Answer += " -> Memory card inserted.";
+      break;
+
+    case 0x3D:
+      decodedMP3Answer += " -> Completed play num " + String(decodedMP3Answer.charAt(6), DEC);
+      break;
+
+    case 0x40:
+      decodedMP3Answer += " -> Error";
+      break;
+
+    case 0x41:
+      decodedMP3Answer += " -> Data recived correctly. ";
+      break;
+
+    case 0x42:
+      decodedMP3Answer += " -> Status playing: " + String(decodedMP3Answer.charAt(6), DEC);
+      break;
+
+    case 0x48:
+      decodedMP3Answer += " -> File count: " + String(decodedMP3Answer.charAt(6), DEC);
+      break;
+
+    case 0x4C:
+      decodedMP3Answer += " -> Playing: " + String(decodedMP3Answer.charAt(6), DEC);
+      break;
+
+    case 0x4E:
+      decodedMP3Answer += " -> Folder file count: " + String(decodedMP3Answer.charAt(6), DEC);
+      break;
+
+    case 0x4F:
+      decodedMP3Answer += " -> Folder count: " + String(decodedMP3Answer.charAt(6), DEC);
+      break;
+  }
+
+  return decodedMP3Answer;
 }
 
 String getStringPartByNr(String data, char separator, int index) {
