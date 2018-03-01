@@ -11,13 +11,13 @@ const int MAX_SENSORS = 10;
 
 int NUM_SENSORS = 0;
 int numSensorsSent = 0;
-const int SENSOR_INTERVAL = 60;
+const int SENSOR_INTERVAL = 10;
 unsigned long lastTimeSent = 0;
 
 OneWire oneWire(ONE_WIRE_BUS_PIN);
 DallasTemperature sensors(&oneWire);
 
-float lastTempSent[MAX_SENSORS];
+String lastTempSent[MAX_SENSORS];
 DeviceAddress ds_addr[MAX_SENSORS];
 
 HomieNode analogNode("temperature", "temperature");
@@ -44,7 +44,13 @@ void setupHandler() {
 
   for(int i=0;i<NUM_SENSORS;i++) {
     sensors.getAddress(ds_addr[i], i);
-    sensors.setResolution(ds_addr[i], 12);
+
+    // Resolution 9 gives 0.5 degrees C accuracy. 
+    // 10 is 0.25, 
+    // 11 is 0.125,
+    // 12 is 0.0625
+    
+    sensors.setResolution(ds_addr[i], 9); 
   }
 
   analogNode.advertise("sensor_count");
@@ -94,15 +100,16 @@ void loopHandler() {
 void printTemperature(DeviceAddress deviceAddress, int i, int m) {
 
   float tempC = sensors.getTempC(deviceAddress); 
+  
   Homie.getLogger() << "Sensor: " << i << " ";
 
   // If same value, don't send it again.
-  if (lastTempSent[i]==tempC) {
+  if (lastTempSent[i]==String(tempC,1)) {
     Homie.getLogger() << "same value, not sending." << endl;
     return;
   }
 
-  lastTempSent[i] = tempC;
+  lastTempSent[i] = String(tempC,1);
   
   char b[100];
   char s_addr[30];
@@ -127,8 +134,8 @@ void printTemperature(DeviceAddress deviceAddress, int i, int m) {
     error = 1;
   } else {
     Homie.getLogger() << "C: " << tempC << " F: " << DallasTemperature::toFahrenheit(tempC) << endl;
-    dtostrf(tempC,7,3,outstrC);
-    dtostrf(DallasTemperature::toFahrenheit(tempC),7,3,outstrF);
+    dtostrf(tempC,7,1,outstrC);
+    dtostrf(DallasTemperature::toFahrenheit(tempC),7,1,outstrF);
   }
   sprintf(b,"{\"sensor\": \"%s\", \"index\":%d, \"total_sensors\": %d, \"temp_C\": %s, \"temp_F\": %s, \"error\": %d }",s_addr,i,m,outstrC,outstrF,error);
   Homie.getLogger() << "Sending: " << b << endl;
