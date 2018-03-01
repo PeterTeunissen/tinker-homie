@@ -2,7 +2,6 @@
 #include <Homie.h>
 
 const int NUM_PINS = 4;
-const int SEND_INTERVAL = 60;             // Send the state every 60 seconds anyway
 const unsigned long DEBOUNCE_DELAY = 50;  // 50 ms for debouncing
 const int LED_TIME = 500;                 // Blue led turns on 500ms for every mqtt send
 const int LED_PIN = 2;                    // Blue led is in pin 2
@@ -21,7 +20,7 @@ int pins[NUM_PINS] = {
 
 char names[5][NUM_PINS] = {"W","W2","Y","G"};
 
-struct ButtonState {        // Info for one input
+struct ZoneState {        // Info for one input
   int pin;
   char name[5];
   unsigned long lastTimeSent = 0;
@@ -29,6 +28,8 @@ struct ButtonState {        // Info for one input
   unsigned long debounceStart;
   int debounceState;
 };
+
+ZoneState zones[NUM_PINS];
 
 HomieNode hvacNode("hvac", "hvac");
 
@@ -51,15 +52,13 @@ void setup() {
   Homie.getLogger() << "Setup done" << endl;
 }
 
-ButtonState buttons[4];
-
 void setupHandler() {
   for(int i=0;i<NUM_PINS;i++) {
-    initButton(pins[i],names[i],&buttons[i]);    
+    initZone(pins[i],names[i],&zones[i]);    
   }
 }
 
-void initButton(int pin, char *name, ButtonState *state) {
+void initZone(int pin, char *name, ZoneState *state) {
   state->pin = pin;
   strcpy(state->name,name);
   state->currentState = digitalRead(state->pin);
@@ -70,11 +69,11 @@ void initButton(int pin, char *name, ButtonState *state) {
 
 void loopHandler() {       
   for(byte i=0;i<NUM_PINS;i++) {
-    monitorButton(&buttons[i]);
+    monitorZone(&zones[i]);
   }
 }
 
-void monitorButton(ButtonState *state) {
+void monitorZone(ZoneState *state) {
   
   int reading = digitalRead(state->pin);
 
@@ -92,8 +91,8 @@ void monitorButton(ButtonState *state) {
     }
   }
 
-  // Force the send of the state every SEND_INTERVAL seconds, just so the host has the current values.
-  if (millis() - state->lastTimeSent > SEND_INTERVAL * 1000UL || state->lastTimeSent == 0) {
+  //  If we have never sent the state, send it now, to make sure server is in sync.
+  if (state->lastTimeSent == 0) {
     sendState(state);
     state->lastTimeSent = millis();
   }
@@ -104,7 +103,7 @@ void monitorButton(ButtonState *state) {
   }
 }
 
-void sendState(ButtonState *state) {
+void sendState(ZoneState *state) {
   char b[100];
   // Make a JSON message with some info.
   sprintf(b,"{\"signal\": \"%s\", \"pin\":%d, \"value\":%d }",state->name,state->pin,state->currentState);
