@@ -1,5 +1,7 @@
-#include <stdio.h>
 #include <Homie.h>
+
+
+#include <stdio.h>
 #include <SoftwareSerial.h>
 #include "PCF8574.h"
 #include <Wire.h>
@@ -72,8 +74,9 @@ int lastClosedState2 = -1;
 volatile int ISR_Trapped = false; // Connected to D7
 int isrHandled = false;
 int isrStartTime = -1;
- 
-PCF8574 expander(D5,D6,EXPANDER_ADDRESS);
+
+// Need to use 14,12 here instead of D5,D6 since the compiler does not know what D5,D6 is. 
+PCF8574 expander(14,12,EXPANDER_ADDRESS);
 
 SoftwareSerial mp3(RX_PIN,TX_PIN); // Used to send messages to the mp3 player
 
