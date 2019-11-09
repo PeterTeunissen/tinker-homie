@@ -8,6 +8,8 @@
 #include <stdlib.h>
 #include <OneWire.h> 
 #include <DallasTemperature.h>
+#include <ArduinoJson.h>
+#include "HTTPClient.h"
 
 #include <ConnectionInfo.h>
 #include "HealthHandler.h"
@@ -61,7 +63,6 @@ PumpHandler *pumpHandler;
 FlowSensor *flowSensor;
 LevelSensors *levelSensors;
 HealthHandler *healthHandler;
-ValveHandler *valveHandler;
 AlertHandler *alertHandler;
 TempSensor *tempSensor;
 
@@ -72,6 +73,9 @@ Zone *zoneD;
 
 boolean g_refreshDisplay=false;
 char g_temp[8];
+char g_timeZoneBuf[30] = "America/New_York";
+char g_timeZoneOffset[3] = "0";
+int g_currentHour = 0;
 
 void tempCallBack(float ftemp) {
   char temp[8];
@@ -399,7 +403,6 @@ void setup() {
   flowSensor = new FlowSensor(flowCallBack);
   levelSensors = new LevelSensors(&expander, levelCallBack);
   healthHandler = new HealthHandler(healthCallBack, secondCallBack, &timeClient);
-  valveHandler = new ValveHandler(1,VALVE_PIN_A, valveCallBack);
   alertHandler = new AlertHandler(alertCallBack);
   tempSensor = new TempSensor(tempCallBack, &dallasSensors, TEMP_INTERVAL);
   
@@ -440,26 +443,111 @@ void initLabels() {
 
   display.setTextAlignment(TEXT_ALIGN_LEFT);
   display.drawString(0, 0, "RSSI");
-
   display.setTextAlignment(TEXT_ALIGN_RIGHT);
-
   display.setTextAlignment(TEXT_ALIGN_LEFT);
   display.drawString(0, 12, "Tank");
-  
   display.drawString(0, 24, "Pump");
-
   display.drawString(66, 24, "Flow");
-
   display.drawString(0, 36, "ZoneA");
-
   display.drawString(66, 36, "ZoneC");
-
   display.drawString(0, 48, "ZoneB");
-
   display.drawString(66, 48, "ZoneD");
-
   display.display();
 }
+
+void getTimeZone() {
+  WiFiClient wifi;
+  HTTPClient http;
+  String timeZoneJson="";
+  
+  if (http.begin(wifi, "http://ip-api.com/json/")) {    
+    Serial.print(F("[HTTP] GET...\n"));
+    // start connection and send HTTP header
+    int httpCode = http.GET();
+
+    // httpCode will be negative on error
+    if (httpCode > 0) {
+      // HTTP header has been send and Server response header has been handled
+      Serial.printf("[HTTP] GET... code: %d\n", httpCode);
+
+      // file found at server
+      if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
+        timeZoneJson = http.getString();
+        Serial.println(timeZoneJson);
+
+        StaticJsonBuffer<1000> jsonBuffer;
+        JsonObject& json = jsonBuffer.parseObject(timeZoneJson.c_str());
+      
+        if (!json.success ()) {
+          Serial.println(F("Failed to parse ip-api response"));
+          return;
+        }
+                
+        if (json.get<const char*>("timezone")) {
+          strcpy(g_timeZoneBuf, json["timezone"]);
+          Serial.print(F("timezone name in json:"));    
+          Serial.println(g_timeZoneBuf);    
+        } else {
+          Serial.println(F("timezone not found in json. Using: -5"));    
+        }
+      }
+    } else {
+      Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+    }
+    http.end();
+  }  
+}
+
+void getTimeZoneOffset() {
+  //http://api.timezonedb.com/v2.1/get-time-zone?key=31VLCCL5BAKD&format=json&by=zone&zone=America/New_York
+  WiFiClient wifi;
+  HTTPClient http;
+
+  String url = "http://api.timezonedb.com/v2.1/get-time-zone?key=" + String(TIMEZONE_API_KEY) + "&format=json&by=zone&zone=" + String(g_timeZoneBuf);
+  
+  if (http.begin(wifi,url)) {    
+    Serial.print("[HTTP] GET...\n");
+    int httpCode = http.GET();
+
+    // httpCode will be negative on error
+    if (httpCode > 0) {
+      // HTTP header has been send and Server response header has been handled
+      Serial.printf("[HTTP] GET... code: %d\n", httpCode);
+
+      // file found at server
+      if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
+
+        strcpy(g_timeZoneOffset,"");
+        
+        String timeZoneJson = http.getString();
+        Serial.println(timeZoneJson);
+
+        StaticJsonBuffer<1000> jsonBuffer;
+        JsonObject& json = jsonBuffer.parseObject(timeZoneJson.c_str());
+      
+        if (!json.success ()) {
+          Serial.println(F("Failed to parse time-api response"));
+          return;
+        }
+
+        char b[15];
+                
+        if (json.get<const char*>("gmtOffset")) {
+          strcpy(b, json["gmtOffset"]);
+          int i = atoi(b);
+          sprintf(g_timeZoneOffset,"%d",i);
+          Serial.print(F("gmtOffset in json:"));    
+          Serial.println(g_timeZoneOffset);    
+          timeClient.setTimeOffset(i);
+        } else {
+          Serial.println(F("gmtOffset not found in json. Using: 0"));    
+        }
+      }
+    }
+    http.end();
+  }
+}
+
 
 void loop() {
   
@@ -471,6 +559,12 @@ void loop() {
     reconnectMQTT();
   }
   client.loop();
+  
+  if ((strlen(g_timeZoneOffset)==0) || (g_currentHour!=timeClient.getHours())) {
+    getTimeZone(); 
+    getTimeZoneOffset();
+    g_currentHour = timeClient.getHours();
+  }
   
   flowSensor->loop();
   healthHandler->loop();
