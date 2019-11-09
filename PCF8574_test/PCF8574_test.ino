@@ -10,11 +10,11 @@
 #include "PCF8574.h"
 #include <Wire.h>
 
-PCF8574 PCF_01(0x38);
+PCF8574 PCF_01(32,33,0x38);
 
 void setup()
 {
-  Serial.begin(9600);
+  Serial.begin(115200);
   Serial.print("PCF8574_test version: ");
   Serial.println(PCF8574_LIB_VERSION);
   
@@ -28,14 +28,18 @@ void setup()
 
 void loop()
 {
-  Serial.println("HLT");
-  while (Serial.available() == 0);
-  switch(Serial.read())
-  {
-    case 'H': doHigh(); break;
-    case 'L': doLow(); break;
-    case 'T': doToggle(); break;
-  }
+  int x = PCF_01.read8();
+  Serial.print("Read ");
+  Serial.println(x, HEX);
+  delay(500);  
+//  Serial.println(x, HEX);  Serial.println("HLT");
+//  while (Serial.available() == 0);
+//  switch(Serial.read())
+//  {
+//    case 'H': doHigh(); break;
+//    case 'L': doLow(); break;
+//    case 'T': doToggle(); break;
+//  }
 }
 
 void doHigh()
@@ -61,6 +65,3 @@ void doToggle()
   Serial.print("Read ");
   Serial.println(x, HEX);
 }
-
-
-
