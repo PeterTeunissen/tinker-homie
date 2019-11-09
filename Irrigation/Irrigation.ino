@@ -74,7 +74,7 @@ Zone *zoneD;
 boolean g_refreshDisplay=false;
 char g_temp[8];
 char g_timeZoneBuf[30] = "America/New_York";
-char g_timeZoneOffset[3] = "0";
+char g_timeZoneOffset[10] = "0";
 int g_currentHour = 0;
 
 void tempCallBack(float ftemp) {
@@ -317,6 +317,7 @@ void mqttCallBack(char* topic, byte *payload, unsigned int length) {
   } 
 
   if (message.startsWith("SCHEDULE:")) {
+    // Strip off the word "SCHEDULE:"
     message = message.substring(9);
     Serial.print("Left:");
     Serial.println(message);
@@ -405,7 +406,7 @@ void setup() {
   healthHandler = new HealthHandler(healthCallBack, secondCallBack, &timeClient);
   alertHandler = new AlertHandler(alertCallBack);
   tempSensor = new TempSensor(tempCallBack, &dallasSensors, TEMP_INTERVAL);
-  
+      
   zoneA = new Zone(new ValveHandler(1, VALVE_PIN_A, valveCallBack), pumpHandler, levelSensors, flowSensor, alertHandler, LOW_FLOW_GRACE_MILLI_SECONDS, FLOW_MINIMUM);
   zoneB = new Zone(new ValveHandler(2, VALVE_PIN_B, valveCallBack), pumpHandler, levelSensors, flowSensor, alertHandler, LOW_FLOW_GRACE_MILLI_SECONDS, FLOW_MINIMUM);
   zoneC = new Zone(new ValveHandler(3, VALVE_PIN_C, valveCallBack), pumpHandler, levelSensors, flowSensor, alertHandler, LOW_FLOW_GRACE_MILLI_SECONDS, FLOW_MINIMUM);
@@ -561,6 +562,7 @@ void loop() {
   client.loop();
   
   if ((strlen(g_timeZoneOffset)==0) || (g_currentHour!=timeClient.getHours())) {
+    Serial.println("Refresh timezone Offset");
     getTimeZone(); 
     getTimeZoneOffset();
     g_currentHour = timeClient.getHours();
