@@ -2,15 +2,15 @@
 #include <Ticker.h>
 #include <AsyncMqttClient.h>
 
-#define WIFI_SSID "1465WL"
-#define WIFI_PASSWORD "6109170381"
+#define WIFI_SSID "...."
+#define WIFI_PASSWORD "...."
 
-#define MQTT_HOST IPAddress(192, 168, 1, 25)
+#define MQTT_HOST IPAddress(?.?.?.?)
 #define MQTT_PORT 1883
 
 char topic[20] = "EBedstripL";
-char mqttUsername[20] = "switches";
-char mqttPassword[20] = "bitches";
+char mqttUsername[20] = ".....";
+char mqttPassword[20] = ".....";
 
 const int PIN_RELAY = 5; // D1
 const int PIN_PIR = 4; // D2

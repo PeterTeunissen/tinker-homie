@@ -8,13 +8,13 @@
 #include <WiFiUdp.h>
 
 // WiFi network name and password:
-const char* ssid = "1465WL";
-const char* password = "6109170381";
-const char* mqtt_server = "192.168.1.25";
+const char* ssid = ".....";
+const char* password = "......";
+const char* mqtt_server = "?.?.?.?";
 
 #define mqtt_port 1883
-#define MQTT_USER "switches"
-#define MQTT_PASSWORD "bitches"
+#define MQTT_USER "....."
+#define MQTT_PASSWORD "....."
 #define MQTT_SERIAL_PUBLISH_CH "/homie/pump/rssi"
 #define MQTT_SERIAL_RECEIVER_CH "/homie/pump/zone"
 
