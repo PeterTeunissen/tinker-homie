@@ -17,6 +17,8 @@ class Zone {
     boolean isDone();
     boolean isEndInError();
     void clearError();
+    void setMinimumFlow(int minFlow);
+    void setGracePeriod(int gracePeriod);
   private:
     ValveHandler *m_valveHandler;
     PumpHandler *m_pumpHandler; 

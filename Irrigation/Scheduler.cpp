@@ -8,7 +8,7 @@ void Scheduler::init() {
   m_alertHandler->alert(1, "System started.");  
 }
 
-void Scheduler::scheduleZones(int runTimes[4]) {
+void Scheduler::scheduleZones(int runTimes[4], int gracePeriod, int minimumFlow) {
 
   for(int i=0;i<4;i++) {
     if (m_runTimes[i]!=0) {
@@ -20,6 +20,8 @@ void Scheduler::scheduleZones(int runTimes[4]) {
   for(int i=0;i<4;i++) {
     m_runTimes[i]=runTimes[i];
     m_zones[i]->clearError();
+    m_zones[i]->setGracePeriod(gracePeriod);
+    m_zones[i]->setMinimumFlow(minimumFlow);
   }
 
   m_alertHandler->alert(3, "Schedule started.");

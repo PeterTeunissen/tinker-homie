@@ -5,7 +5,7 @@ AlertHandler::AlertHandler(void (*alertCallback)(boolean isRunning, int errNo, c
 }
 
 void AlertHandler::alert(int errNo, char *msg) {
-	m_alertCallback(m_scheduleRunning, errNo, msg);
+  m_alertCallback(m_scheduleRunning, errNo, msg);
 }
 
 void AlertHandler::setRunning(boolean isRunning) {
