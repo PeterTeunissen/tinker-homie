@@ -14,7 +14,7 @@ class FlowSensor {
     volatile unsigned int m_count = 0;
     int m_lastTime = 0;
     unsigned int m_lastFlow = 0;
-	  unsigned int m_flow = 0;
+    unsigned int m_flow = 0;
     boolean m_init = false;
 };
 

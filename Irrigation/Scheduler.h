@@ -11,7 +11,7 @@ class Scheduler {
     void init();
     void stopSchedule();
     void schedule(int i, int secs);
-    void scheduleZones(int runTimes[4]);
+    void scheduleZones(int runTimes[4], int gracePeriod, int minimumFlow);
     void addZone(Zone *zone);
     void loop();
   private:

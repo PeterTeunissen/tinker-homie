@@ -215,12 +215,15 @@ void secondCallBack() {
   display.fillRect(70, 0, 128-70, LINE_HEIGHT);
   display.setColor(WHITE);
 
+  // Since the display does not have a lot of space, we toggle current time and temperature on the same position
+  // on the display every 5 seconds.
   if ((timeClient.getSeconds() % 10) < 5 ) {
     display.drawString(128, 0, g_temp);
   } else {
     display.drawString(128, 0, formattedTime.c_str());
   }
-  
+
+  // Keep telling the server we are up every 10 seconds.
   if (timeClient.getSeconds() % 10 == 0) {
     char val[10];
     sprintf(val, "%s", formattedTime.c_str());
@@ -238,6 +241,9 @@ void healthCallBack(unsigned int upTime, unsigned int rssi) {
   display.setColor(WHITE);
   display.drawString(32, 0, ": " + String(rssi));
 
+  // Send upTime and the RSSI value to the server. 
+  // It is helpfull to figure out if the ESP is too far away from my Wifi access point.
+  
   char val[10];
   sprintf(val,"%d", rssi);
   publishMQTTData("rssi", val);
@@ -257,21 +263,21 @@ void expanderIRQ() {
 }
 
 void setupWifi() {
-    delay(10);
-    // We start by connecting to a WiFi network
-    Serial.println();
-    Serial.print("Connecting to ");
-    Serial.println(SSID);
-    WiFi.begin(SSID, PASSWORD);
-    while (WiFi.status() != WL_CONNECTED) {
-      delay(500);
-      Serial.print(".");
-    }
-    randomSeed(micros());
-    Serial.println("");
-    Serial.println("WiFi connected");
-    Serial.println("IP address: ");
-    Serial.println(WiFi.localIP());
+  delay(10);
+  // We start by connecting to a WiFi network
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(SSID);
+  WiFi.begin(SSID, PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  randomSeed(micros());
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
 }
 
 void reconnectMQTT() {
@@ -317,7 +323,9 @@ void mqttCallBack(char* topic, byte *payload, unsigned int length) {
   } 
 
   if (message.startsWith("SCHEDULE:")) {
-    // Strip off the word "SCHEDULE:"
+    // Syntax for this message is: "SCHEDULE:<zoneATime>,<zoneBTime>,<zoneCTime>,<zoneDTime>,<gracePeriod>,<minimumFlow>"
+    
+    // Strip off the word "SCHEDULE:"    
     message = message.substring(9);
     Serial.print("Left:");
     Serial.println(message);
@@ -331,17 +339,31 @@ void mqttCallBack(char* topic, byte *payload, unsigned int length) {
     pch = strtok(buf, ",");
     int v = 0;
     int times[4] = {0,0,0,0};
+    int gracePeriod = LOW_FLOW_GRACE_MILLI_SECONDS;
+    int minimumFlow = FLOW_MINIMUM;
     while (pch != NULL) {
       v++;
       int i = atoi(pch);
-      times[v-1]=i;
-      Serial.print("Valve:");
-      Serial.print(v);
-      Serial.print(" time:");
-      Serial.println(i);
+      if (v<=4) {
+        times[v-1]=i;
+        Serial.print("Valve:");
+        Serial.print(v);
+        Serial.print(" time:");
+        Serial.println(i);
+      }
+      if (v==5) {
+        gracePeriod = i*1000;
+        Serial.print("Grace Period:");
+        Serial.println(gracePeriod);
+      }
+      if (v==6) {          
+        minimumFlow = i;
+        Serial.print("Minimum Flow:");
+        Serial.println(minimumFlow);
+      }        
       pch = strtok(NULL, ",");
     }
-    scheduler->scheduleZones(times);    
+    scheduler->scheduleZones(times, gracePeriod, minimumFlow);    
   }
 }
 
@@ -359,7 +381,7 @@ void publishMQTTData(char *topic, char *serialData){
 
 void setup() {
   pinMode(16,OUTPUT);
-  digitalWrite(16, LOW);    // set GPIO16 low to reset OLED
+  digitalWrite(16, LOW);  // set GPIO16 low to reset OLED
   delay(50); 
   digitalWrite(16, HIGH); // while OLED is running, must set GPIO16 in high、
 
@@ -424,8 +446,8 @@ void setup() {
 
   initLabels();
 
-  // Now have to set the I2C bus speed back to 100khz, since the PCF8574 can not run at the high speed that the SSD1306 can handle.
-  // (The PCF8574 library sets the speed to 400k)
+  // Now have to set the I2C bus speed back to 100khz, since the PCF8574 can not run at the same high speed that the SSD1306 can handle.
+  // (The SSD1306 library sets the speed to 400k)
   // The place of this line in the code makes a difference! Needs to be after the display.init() and before the expander.begin()!!
   Wire.setClock(100000);
   
@@ -488,6 +510,7 @@ void getTimeZone() {
           strcpy(g_timeZoneBuf, json["timezone"]);
           Serial.print(F("timezone name in json:"));    
           Serial.println(g_timeZoneBuf);    
+          publishMQTTData("timeZone", g_timeZoneBuf);
         } else {
           Serial.println(F("timezone not found in json. Using: -5"));    
         }
@@ -540,6 +563,7 @@ void getTimeZoneOffset() {
           Serial.print(F("gmtOffset in json:"));    
           Serial.println(g_timeZoneOffset);    
           timeClient.setTimeOffset(i);
+          publishMQTTData("gmtOffSet", g_timeZoneOffset);
         } else {
           Serial.println(F("gmtOffset not found in json. Using: 0"));    
         }

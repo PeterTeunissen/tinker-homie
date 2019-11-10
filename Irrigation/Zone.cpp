@@ -20,7 +20,7 @@ void Zone::loop() {
       m_endInError = true;
       stopZone();
       m_alertHandler->alert(6, "Tank level too low!");
-      Serial.println("Error 6");
+      Serial.println("Error 6, Tank level too low!");
     } else {
     
       unsigned int onTime = millis()-m_startTime;
@@ -29,7 +29,7 @@ void Zone::loop() {
         m_endInError = true;
         stopZone();
         m_alertHandler->alert(8, "Not enough water flow!");
-        Serial.println("Error 8");
+        Serial.println("Error 8, Not enough water flow");
       }
 
       // check the running flag again, since it could have been reset by the minimum flow check
@@ -44,6 +44,14 @@ void Zone::loop() {
       }
     }
   }
+}
+
+void Zone::setMinimumFlow(int minFlow) {
+  m_flowMinimum = minFlow;
+}
+
+void Zone::setGracePeriod(int gracePeriod){
+  m_gracePeriod = gracePeriod;
 }
 
 boolean Zone::isEndInError() {
@@ -70,6 +78,7 @@ boolean Zone::isDone() {
 void Zone::runZone(int secs) {
   if (m_running || m_levelSensors->enoughWater()==false) {
     m_alertHandler->alert(7, "Tank level too low!");
+    Serial.println("Error 7, Tank level too low!");
     return;
   }
   m_endInError = false;
