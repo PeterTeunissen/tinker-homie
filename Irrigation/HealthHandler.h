@@ -13,7 +13,6 @@ class HealthHandler {
     void (*m_secondCallback)();
     NTPClient *m_ntp;
     unsigned int m_lastHealth = 0;
-    unsigned int m_upTime = 0;
     unsigned int m_lastSec = 0;
     uint8_t rssiToPercentage(int32_t rssi);
     boolean m_init = false;

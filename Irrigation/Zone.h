@@ -28,8 +28,8 @@ class Zone {
     int m_flowMinimum;
     int m_gracePeriod;
     int m_trailTime = 0;
-    unsigned int m_startTime;
-    int m_maxTime;
+    unsigned int m_startTime = 0;
+    int m_maxTime = 0;
     int m_running = false;
     boolean m_init = false;
     boolean m_endInError = false;
