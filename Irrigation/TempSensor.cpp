@@ -17,7 +17,7 @@ void TempSensor::loop() {
   if (m_pendingRead && (millis()-m_readStart > 500)) {
 
     float temp = m_sensors->getTempFByIndex(0);
-    Serial.print("Temp:");
+    Serial.print("Temp Read:");
     Serial.println(temp);
 
     // If the sensor reports -127C it means the sensor had an error. So we should ignore the value.

@@ -13,6 +13,7 @@ void Scheduler::scheduleZones(int runTimes[4], int gracePeriod, int minimumFlow)
   for(int i=0;i<4;i++) {
     if (m_runTimes[i]!=0) {
       m_alertHandler->alert(2, "Scheduler is busy!");
+      Serial.println("Error 2, Scheduler is busy!");
       return;
     }
   }
@@ -37,18 +38,6 @@ void Scheduler::stopSchedule() {
   m_prevAllIdle = true;
   m_alertHandler->setRunning(false);
   m_alertHandler->alert(4, "Schedule stopped.");
-}
-
-void Scheduler::schedule(int i, int secs) {
-  if (allIdle()) {
-    m_runTimes[i-1]=secs;    
-    Serial.print("Schedule for zone:");
-    Serial.print(i-1);
-    Serial.print(" set to:");
-    Serial.println(secs);
-  } else {
-    Serial.println("Schedule not set");
-  }
 }
 
 void Scheduler::loop() {
@@ -88,7 +77,7 @@ void Scheduler::loop() {
     }
     
     if (!zoneStarted && m_prevAllIdle!=allZonesIdle && !anyZoneHasError) {
-      Serial.println("Error 5");
+      Serial.println("Alert 5, Schedule Completed.");
       m_alertHandler->alert(5, "Schedule completed.");      
       m_alertHandler->setRunning(false);      
     }

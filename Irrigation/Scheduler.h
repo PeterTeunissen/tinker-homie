@@ -10,7 +10,6 @@ class Scheduler {
     Scheduler(AlertHandler *alertHandler);
     void init();
     void stopSchedule();
-    void schedule(int i, int secs);
     void scheduleZones(int runTimes[4], int gracePeriod, int minimumFlow);
     void addZone(Zone *zone);
     void loop();
@@ -20,7 +19,7 @@ class Scheduler {
     boolean anyZoneError();
     int m_zoneCount = 0;
     Zone *m_zones[4];
-    unsigned int m_runTimes[4] = {0,0,0,0};
+    unsigned int m_runTimes[4] = {0, 0, 0, 0};
     boolean m_init = false;
     boolean m_prevAllIdle = true;
 };

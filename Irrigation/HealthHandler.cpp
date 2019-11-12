@@ -3,7 +3,7 @@
 
 #define HEALTH_INTERVAL 30000
 
-HealthHandler::HealthHandler(void (*healthCallback)(unsigned int, unsigned int), void (*secondCallback)(), NTPClient *ntp) {
+HealthHandler::HealthHandler(void (*healthCallback)(unsigned int upTime, unsigned int rssi), void (*secondCallback)(), NTPClient *ntp) {
   m_healthCallback = healthCallback;
   m_secondCallback = secondCallback;
   m_ntp = ntp;
@@ -12,7 +12,6 @@ HealthHandler::HealthHandler(void (*healthCallback)(unsigned int, unsigned int),
 void HealthHandler::loop() {
   if (millis()-m_lastHealth>HEALTH_INTERVAL || m_init==false) {
     m_lastHealth = millis();
-    m_upTime+-HEALTH_INTERVAL;
     m_healthCallback(millis(), rssiToPercentage(WiFi.RSSI()));
   }
 

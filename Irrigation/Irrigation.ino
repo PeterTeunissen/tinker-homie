@@ -553,10 +553,9 @@ void getTimeZoneOffset() {
           Serial.println(F("Failed to parse time-api response"));
           return;
         }
-
-        char b[15];
                 
         if (json.get<const char*>("gmtOffset")) {
+          char b[15];
           strcpy(b, json["gmtOffset"]);
           int i = atoi(b);
           sprintf(g_timeZoneOffset,"%d",i);
@@ -565,7 +564,7 @@ void getTimeZoneOffset() {
           timeClient.setTimeOffset(i);
           publishMQTTData("gmtOffSet", g_timeZoneOffset);
         } else {
-          Serial.println(F("gmtOffset not found in json. Using: 0"));    
+          Serial.println(F("gmtOffset not found in json."));    
         }
       }
     }
