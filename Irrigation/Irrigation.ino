@@ -73,8 +73,8 @@ Zone *zoneD;
 
 boolean g_refreshDisplay=false;
 char g_temp[8];
-char g_timeZoneBuf[30] = "America/New_York";
-char g_timeZoneOffset[10] = "0";
+char g_timeZoneBuf[30] = "";
+char g_timeZoneOffset[10] = "";
 int g_currentHour = 0;
 
 void tempCallBack(float ftemp) {
@@ -523,7 +523,7 @@ void getTimeZone() {
 }
 
 void getTimeZoneOffset() {
-  //http://api.timezonedb.com/v2.1/get-time-zone?key=31VLCCL5BAKD&format=json&by=zone&zone=America/New_York
+
   WiFiClient wifi;
   HTTPClient http;
 
@@ -582,6 +582,7 @@ void loop() {
   if (!client.connected()) {
     reconnectMQTT();
   }
+  
   client.loop();
   
   if ((strlen(g_timeZoneOffset)==0) || (g_currentHour!=timeClient.getHours())) {
