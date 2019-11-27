@@ -1,6 +1,9 @@
 #include "ValveHandler.h"
 
-ValveHandler::ValveHandler(int zoneId, int gpioPin, void (*valveCallback)(unsigned int zoneId, boolean isOn, int timeLeft)) {
+ValveHandler::ValveHandler( int zoneId, 
+                            int gpioPin, 
+                            void (*valveCallback)(unsigned int zoneId, boolean isOn, int timeLeft)) {
+
   m_valveCallback = valveCallback;
   m_gpioPin = gpioPin;
   m_zoneId = zoneId;

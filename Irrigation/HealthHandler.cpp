@@ -3,7 +3,11 @@
 
 #define HEALTH_INTERVAL 30000
 
-HealthHandler::HealthHandler(void (*healthCallback)(unsigned int upTime, unsigned int rssi), void (*secondCallback)(), void (*rebootCallback)(), NTPClient *ntp) {
+HealthHandler::HealthHandler( void (*healthCallback)(unsigned int upTime, unsigned int rssi), 
+                              void (*secondCallback)(), 
+                              void (*rebootCallback)(), 
+                              NTPClient *ntp) {
+
   m_healthCallback = healthCallback;
   m_secondCallback = secondCallback;
   m_rebootCallback = rebootCallback;
