@@ -1,6 +1,7 @@
 #include "LevelSensors.h"
 
-LevelSensors::LevelSensors(PCF8574 *expander, void (*levelCallback)(unsigned int)) {
+LevelSensors::LevelSensors( PCF8574 *expander, 
+                            void (*levelCallback)(unsigned int)) {
   m_expander = expander;
   m_levelCallback = levelCallback;
 }
