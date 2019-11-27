@@ -3,13 +3,25 @@
 
 #define HEALTH_INTERVAL 30000
 
-HealthHandler::HealthHandler(void (*healthCallback)(unsigned int upTime, unsigned int rssi), void (*secondCallback)(), NTPClient *ntp) {
+HealthHandler::HealthHandler(void (*healthCallback)(unsigned int upTime, unsigned int rssi), void (*secondCallback)(), void (*rebootCallback)(), NTPClient *ntp) {
   m_healthCallback = healthCallback;
   m_secondCallback = secondCallback;
+  m_rebootCallback = rebootCallback;
   m_ntp = ntp;
 }
 
+void HealthHandler::serverPing() {
+  m_lastPing = millis();
+}
+
 void HealthHandler::loop() {
+
+  if (millis()-m_lastPing > (5*60*1000)) {
+    // reboot.
+    Serial.println("Not getting ping commands from server in time. Rebooting...");
+    m_rebootCallback();
+  }
+  
   if (millis()-m_lastHealth>HEALTH_INTERVAL || m_init==false) {
     m_lastHealth = millis();
     m_healthCallback(millis(), rssiToPercentage(WiFi.RSSI()));
