@@ -22,6 +22,8 @@
 #include "Scheduler.h"
 #include "TempSensor.h"
 
+hw_timer_t *watchdogTimer = NULL;
+
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
 
@@ -30,11 +32,12 @@ NTPClient timeClient(ntpUDP);
 
 // I2C devices
 SSD1306 display(0x3c, 4, 15);
-PCF8574 expander(4, 15, 0x38);
+PCF8574 expander(4, 15, 0x20);
 
-#define MQTT_BOOT_TOPIC    "/homie/irrigation/boot/"
-#define MQTT_BASE_TOPIC    "/homie/irrigation/vals/"
-#define MQTT_RECEIVE_TOPIC "/homie/irrigation/actions"
+#define MQTT_BOOT_TOPIC         "/homie/irrigation/boot/"
+#define MQTT_BASE_TOPIC         "/homie/irrigation/vals/"
+#define MQTT_RECEIVE_TOPIC      "/homie/irrigation/actions"
+#define MQTT_RECEIVE_PING_TOPIC "/homie/irrigation/ping"
 
 #define SDA_PIN     4
 #define SCLK_PIN    15
@@ -91,7 +94,7 @@ void flowCallBack(unsigned int flow) {
 
   display.setTextAlignment(TEXT_ALIGN_LEFT);
   display.setColor(BLACK);
-  display.fillRect(98, 24, 28, LINE_HEIGHT);
+  display.fillRect(98, 24, 30, LINE_HEIGHT);
   display.setColor(WHITE);
   display.drawString(98, 24, ": " + String(flow));
 
@@ -288,12 +291,13 @@ void reconnectMQTT() {
     String clientId = "Irrigator-";
     clientId += String(random(0xffff), HEX);
     // Attempt to connect
-    if (client.connect(clientId.c_str(), MQTT_USER,MQTT_PASSWORD)) {
+    if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD)) {
       Serial.println("connected");
       // Once connected, publish an announcement...
       client.publish(MQTT_BOOT_TOPIC, "Irrigation System reboot");
       // ... and subscribe
       client.subscribe(MQTT_RECEIVE_TOPIC);
+      client.subscribe(MQTT_RECEIVE_PING_TOPIC);
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
@@ -313,57 +317,72 @@ void mqttCallBack(char* topic, byte *payload, unsigned int length) {
   Serial.println();
   
   String message;
-  
   for (int i = 0; i < length; i++) {
     message += (char)payload[i];
   }
 
-  if (message=="STOP") {
-    scheduler->stopSchedule();
-  } 
+  char msg[30+strlen(topic)];
+  sprintf(msg, "Message received on topic:%s Message:%s", topic, message.c_str());
+  Serial.println(msg);
 
-  if (message.startsWith("SCHEDULE:")) {
-    // Syntax for this message is: "SCHEDULE:<zoneATime>,<zoneBTime>,<zoneCTime>,<zoneDTime>,<gracePeriod>,<minimumFlow>"
+  if (strcmp(topic, MQTT_RECEIVE_PING_TOPIC)==0) {
+    Serial.println("Message on ping topic:" + message);
+    healthHandler->serverPing();
+    char p[message.length()+3];
+    strcpy(p, message.c_str());
+    publishMQTTData("pong", p);
+    return;
+  }
+
+  if (strcmp(topic, MQTT_RECEIVE_TOPIC)==0) {
     
-    // Strip off the word "SCHEDULE:"    
-    message = message.substring(9);
-    Serial.print("Left:");
-    Serial.println(message);
-
-    char buf[message.length()+1];
-    message.toCharArray(buf, sizeof(buf));
-
-    Serial.println(buf);
-    
-    char * pch;
-    pch = strtok(buf, ",");
-    int v = 0;
-    int times[4] = {0,0,0,0};
-    int gracePeriod = LOW_FLOW_GRACE_MILLI_SECONDS;
-    int minimumFlow = FLOW_MINIMUM;
-    while (pch != NULL) {
-      v++;
-      int i = atoi(pch);
-      if (v<=4) {
-        times[v-1]=i;
-        Serial.print("Valve:");
-        Serial.print(v);
-        Serial.print(" time:");
-        Serial.println(i);
+    if (message=="STOP") {
+      scheduler->stopSchedule();
+    } 
+  
+    if (message.startsWith("SCHEDULE:")) {
+      // Syntax for this message is: "SCHEDULE:<zoneATime>,<zoneBTime>,<zoneCTime>,<zoneDTime>,<gracePeriod>,<minimumFlow>"
+      
+      // Strip off the word "SCHEDULE:"    
+      message = message.substring(9);
+      Serial.print("Left:");
+      Serial.println(message);
+  
+      char buf[message.length()+1];
+      message.toCharArray(buf, sizeof(buf));
+  
+      Serial.println(buf);
+      
+      char * pch;
+      pch = strtok(buf, ",");
+      int v = 0;
+      int times[4] = {0,0,0,0};
+      int gracePeriod = LOW_FLOW_GRACE_MILLI_SECONDS;
+      int minimumFlow = FLOW_MINIMUM;
+      while (pch != NULL) {
+        v++;
+        int i = atoi(pch);
+        if (v<=4) {
+          times[v-1]=i;
+          Serial.print("Valve:");
+          Serial.print(v);
+          Serial.print(" time:");
+          Serial.println(i);
+        }
+        if (v==5) {
+          gracePeriod = i*1000;
+          Serial.print("Grace Period:");
+          Serial.println(gracePeriod);
+        }
+        if (v==6) {          
+          minimumFlow = i;
+          Serial.print("Minimum Flow:");
+          Serial.println(minimumFlow);
+        }        
+        pch = strtok(NULL, ",");
       }
-      if (v==5) {
-        gracePeriod = i*1000;
-        Serial.print("Grace Period:");
-        Serial.println(gracePeriod);
-      }
-      if (v==6) {          
-        minimumFlow = i;
-        Serial.print("Minimum Flow:");
-        Serial.println(minimumFlow);
-      }        
-      pch = strtok(NULL, ",");
+      scheduler->scheduleZones(times, gracePeriod, minimumFlow);    
     }
-    scheduler->scheduleZones(times, gracePeriod, minimumFlow);    
   }
 }
 
@@ -425,7 +444,7 @@ void setup() {
   pumpHandler = new PumpHandler(PUMP_PIN, pumpCallBack);
   flowSensor = new FlowSensor(flowCallBack);
   levelSensors = new LevelSensors(&expander, levelCallBack);
-  healthHandler = new HealthHandler(healthCallBack, secondCallBack, &timeClient);
+  healthHandler = new HealthHandler(healthCallBack, secondCallBack, interruptReboot, &timeClient);
   alertHandler = new AlertHandler(alertCallBack);
   tempSensor = new TempSensor(tempCallBack, &dallasSensors, TEMP_INTERVAL);
       
@@ -460,10 +479,15 @@ void setup() {
   scheduler->init();
 }
 
+void interruptReboot() {
+  Serial.println("Rebooting...");
+  ESP.restart();
+}
+
 void initLabels() {
 
   display.clear();
-
+  display.flipScreenVertically();
   display.setTextAlignment(TEXT_ALIGN_LEFT);
   display.drawString(0, 0, "RSSI");
   display.setTextAlignment(TEXT_ALIGN_RIGHT);
