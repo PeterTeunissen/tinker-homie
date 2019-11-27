@@ -21,6 +21,4 @@ class ValveHandler {
     int m_lastTimeLeftSent = 0;
 };
 
-//extern ValveHandler valveHandler;
-
 #endif
