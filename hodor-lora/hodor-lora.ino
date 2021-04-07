@@ -1,6 +1,6 @@
-//#include <Homie.h>
 
 #include <stdio.h>
+#include <SoftwareSerial.h>
 #include "PCF8574.h"
 #include <Wire.h>
 
@@ -11,22 +11,16 @@ const int NUM_DOORS = 1;
 const int DEBOUNCE_DELAY = 100;  // 200 ms for debouncing
 const int LED_PIN = LED_BUILTIN;
 const int BUTTON_PIN = 0;
-const int EXPANDER_ADDRESS = 0x20;
+const int EXPANDER_ADDRESS = 0x38;
 
 const int INT_PIN = 13;
-const int RX_PIN = 0;
-const int TX_PIN = 2;
+const int RX_PIN = 5; // 5=D1 D3=0
+const int TX_PIN = 4; // 4=D2 D4=2
 
 int openPin[2] = {PIN_0,PIN_2};
 int closedPin[2] = {PIN_1,PIN_3};
 int relayPin[2]= {PIN_4,PIN_5};
    
-//HomieNode switches1("switches1","switches1");
-//HomieNode switches2("switches2","switches2");
-
-//HomieNode relay1("relay1","relay1");
-//HomieNode relay2("relay2","relay2");
-
 int lastOpenState1 = -1;
 int lastOpenState2 = -1;
 int lastClosedState1 = -1;
@@ -36,162 +30,155 @@ int relay2On = 0;
 unsigned long onTime;
 
 volatile int ISR_Trapped = false; // Connected to D7
-int isrHandled = false;
+int isrHandled = true;
 int isrStartTime = -1;
 
 // Need to use 14,12 here instead of D5,D6 since the compiler does not know what D5,D6 is. 
 PCF8574 expander(14,12,EXPANDER_ADDRESS);
 
-//bool relay1OnHandler(HomieRange range, String value) {
-//  if (value != "on" && value != "off") return false;
-//
-//  bool on = (value == "on");
-//  expander.write(relayPin[0], on ? LOW : HIGH);
-//  relay1.setProperty("activate").send(value);
-//  Homie.getLogger() << "Relay 1 is " << (on ? "on" : "off") << endl;
-//
-//  return true;
-//}
-
-//bool relay2OnHandler(HomieRange range, String value) {
-//  if (value != "on" && value != "off") return false;
-//
-//  bool on = (value == "on");
-//  expander.write(relayPin[1], on ? LOW : HIGH);
-//  relay2.setProperty("activate").send(value);
-//  Homie.getLogger() << "Relay 2 is " << (on ? "on" : "off") << endl;
-//
-//  return true;
-//}
-
+SoftwareSerial lora(TX_PIN, RX_PIN);
+  
 void loraSend() {
   char buf[50];
   sprintf(buf,"[%d, %d, %d, %d, %d, %d]", lastOpenState1, lastOpenState2, lastClosedState1, lastClosedState2, relay1On, relay2On);
   String b(buf);
-  Serial.print("AT+SEND=0," + String(b.length()) + b + "\n\r");
+  String msgBuffer = "AT+SEND=0," + String(b.length()) + "," + b;
+  Serial.print("Sending:");
+  Serial.println(msgBuffer);
+  lora.print(msgBuffer + "\r\n");
 }
 
 void loraRead() {
 
   String readBuffer;
-  while (Serial.available()) {
-    int c = Serial.read();
+  while (lora.available()) {
+    int c = lora.read();
     if (c=='\n' || c=='\r') {
       // +RCV=50,5,HELLO,-99,40
-      readBuffer.remove(0,5); // remove the '+RCV=' part
-      String msgSize = getStringPartByNr(readBuffer, ',', 1);
-      String msgData = getStringPartByNr(readBuffer, ',', 2);
-      if (msgData.length()==msgSize.toInt()) {
-        String r1 = getStringPartByNr(msgData, ' ', 1);
-        relay1On = 0;
-        relay2On = 0;
-        if (r1=="on") {
-          relay1On = 1;
-          expander.write(relayPin[0], LOW);
-          onTime = millis();
-        }
-        String r2 = getStringPartByNr(msgData, ' ', 2);
-        if (r2=="on") {
-          relay2On = 1;
-          expander.write(relayPin[1], LOW);
-          onTime = millis();
+      if (readBuffer.length()==0) {
+        return;
+      }
+      Serial.print("Received:");
+      Serial.println(readBuffer);
+      if (readBuffer.startsWith("+RCV=")) {    
+        readBuffer.remove(0,5); // remove the '+RCV=' part
+        Serial.println(readBuffer);
+        String msgSize = getStringPartByNr(readBuffer, ',', 1);
+        String msgData = getStringPartByNr(readBuffer, ',', 2);
+        Serial.println(msgSize);
+        Serial.println(msgData);
+        if (msgData.length()==msgSize.toInt()) {
+          Serial.println("Same");
+          relay1On = 0;
+          relay2On = 0;
+          if (msgData.indexOf("1:on")!=-1) {
+            relay1On = 1;
+            expander.write(relayPin[0], LOW);
+            onTime = millis();
+          }
+          if (msgData.indexOf("2:on")!=-1) {
+            relay2On = 1;
+            expander.write(relayPin[1], LOW);
+            onTime = millis();
+          }
+          Serial.print("Relay 1:");
+          Serial.print(relay1On);
+          Serial.print(" Relay 2:");
+          Serial.println(relay2On);        
+        } else {
+          Serial.println("NOT Same");
         }
       }
+      readBuffer="";
     } else {
       readBuffer+=char(c);
     }
   }
 }
 
-void expanderInterrupt(void) {    
+void ICACHE_RAM_ATTR expanderInterrupt(void) {    
   ISR_Trapped = true;
 }
 
 void setup() {
   Serial.begin(115200);
-  
+  delay(200);
+  lora.begin(115200);
+  delay(200);
+
   pinMode(LED_PIN,OUTPUT);
+  pinMode(INT_PIN,INPUT);
+
+  attachInterrupt(digitalPinToInterrupt(INT_PIN), expanderInterrupt, FALLING);
 
   expander.begin();
 
-  attachInterrupt(digitalPinToInterrupt(INT_PIN), expanderInterrupt, FALLING);
+  lora.print("AT+NETWORKID?\r\n");
+  delay(200);
   
-//  Homie_setFirmware("homie-hodor", "1.0.0");
-//  Homie.setSetupFunction(setupHandler).setLoopFunction(loopHandler);
-//  Homie.setLedPin(LED_PIN,LOW);//setResetTrigger(BUTTON_PIN, LOW, 5000);
+  Serial.println("Startup done");
 
-//  relay1.advertise("activate").settable(relay1OnHandler);
-//  relay2.advertise("activate").settable(relay2OnHandler);
-    
-//  Homie.setup();
-//  Homie.getLogger() << "Setup done" << endl;
-}
+  expander.write(relayPin[0], HIGH);
+  expander.write(relayPin[1], HIGH);
 
-
-void setupHandler() { 
+  Serial.println("Relay init");
 
 }
 
-void loopHandler() {
+void loop() {
 
-  if ((millis()-onTime> 200) && (relay1On==1 || relay2On==1)) {
+  if (millis()-onTime> 900 && (relay1On==1 || relay2On==1)) {
     expander.write(relayPin[0], HIGH);
     expander.write(relayPin[1], HIGH);
     relay1On = 0;    
-    relay2On = 0;    
+    relay2On = 0;
+    Serial.println("Turning relays off");
   }
   
   if (ISR_Trapped==true) {
     ISR_Trapped = false;
     isrStartTime = millis();
     isrHandled = false;
-//    Homie.getLogger() << "ISR timer Started" << endl;
+    Serial.println("ISR timer Started");
   }
 
-  if (Serial.available()) {
-    loraRead();  
-  }
+  loraRead();  
   
   if (millis()-isrStartTime > DEBOUNCE_DELAY && isrHandled==false) {
-//    Homie.getLogger() << "ISR Servicing" << endl;
+    Serial.println("ISR Servicing");
 
     isrHandled = true;
 
     int openState1 = expander.read(openPin[0]);         
     if (openState1 != lastOpenState1) {
       lastOpenState1 = openState1;
-//      switches1.setProperty("open").send(openState1>0? "false" : "true" );
-//      Homie.getLogger() << "Open sensor 1 is " << (openState1>0? "false" : "true") << endl;
+      Serial.print("Open sensor 1 is:");
+      Serial.println(openState1);
     }
   
     int openState2 = expander.read(openPin[1]);
     if (openState2 != lastOpenState2) {
       lastOpenState2 = openState2;
-//      switches2.setProperty("open").send(openState2>0? "false" : "true" );
-//      Homie.getLogger() << "Open sensor 2 is " << (openState2>0? "false" : "true") << endl;
+      Serial.print("Open sensor 2 is:");
+      Serial.println(openState2);
     }
   
     int closedState1 = expander.read(closedPin[0]);    
     if (closedState1 != lastClosedState1) {
       lastClosedState1 = closedState1;
-//      switches1.setProperty("closed").send(closedState1>0? "false" : "true" );
-//      Homie.getLogger() << "Closed sensor 1 is " << (closedState1>0? "false" : "true") << endl;
+      Serial.print("Closed sensor 1 is:");
+      Serial.println(closedState1);
     }
   
     int closedState2 = expander.read(closedPin[1]);
     if (closedState2 != lastClosedState2) {
       lastClosedState2 = closedState2;
-//      switches2.setProperty("closed").send(closedState2>0? "false" : "true" );
-//      Homie.getLogger() << "Closed sensor 2 is " << (closedState2>0? "false" : "true") << endl;
+      Serial.print("Closed sensor 2 is:");
+      Serial.println(closedState2);
     }
 
     loraSend();
   }
-}
-
-
-void loop() {
-//  Homie.loop();
 }
 
 String getStringPartByNr(String data, char separator, int index) {
