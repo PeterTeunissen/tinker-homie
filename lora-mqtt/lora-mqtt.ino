@@ -37,7 +37,7 @@ void setup() {
   
   pinMode(LED_PIN,OUTPUT);
   
-  Homie_setFirmware("homie-lora", "1.0.0");
+  Homie_setFirmware("mqtt-lora", "1.0.0");
   Homie.setSetupFunction(setupHandler).setLoopFunction(loopHandler);
   Homie.setLedPin(LED_PIN,LOW);
 
