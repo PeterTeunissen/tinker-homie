@@ -3,6 +3,7 @@
 #include <SoftwareSerial.h>
 #include "PCF8574.h"
 #include <Wire.h>
+#include "LoraComm.h"
 
 /************ Options **************************/
 #define DEV_TF            0X02
@@ -37,7 +38,20 @@ int isrStartTime = -1;
 PCF8574 expander(14,12,EXPANDER_ADDRESS);
 
 SoftwareSerial lora(TX_PIN, RX_PIN);
-  
+
+void loraCallBack(int address, char* msg, int snr, int rssi) {
+  Serial.print("LCB: Address");
+  Serial.print(address);
+  Serial.print(" msg:");
+  Serial.print(msg);
+  Serial.print(" snr:");
+  Serial.print(snr);
+  Serial.print(" rssi:");
+  Serial.println(rssi);
+}
+
+LoraComm lcm(&lora,loraCallBack);
+
 void loraSend() {
   char buf[50];
   sprintf(buf,"[%d, %d, %d, %d, %d, %d]", lastOpenState1, lastOpenState2, lastClosedState1, lastClosedState2, relay1On, relay2On);
@@ -143,8 +157,22 @@ void loop() {
   }
 
   loraRead();  
-  
+
   if (millis()-isrStartTime > DEBOUNCE_DELAY && isrHandled==false) {
+
+    lcm.send(0,"Hello World",true);
+    
+//    LoraMessage lm(0,"Hello World",2,true);
+//    Serial.print("LoraMessage:>>");
+//    Serial.print(lm.getOutBuffer());
+//    Serial.println("<<");
+    
+//    LoraMessage rm;
+//    rm.parse("+RCV=3,16,Hello World,2,89,23,45");
+
+    //lcm.parse("+RCV=3,16,Hello World,2,89,23,45");
+    lcm.parse("+RCV=3,16,Hello Worlx,2,89,23,45");
+    
     Serial.println("ISR Servicing");
 
     isrHandled = true;
