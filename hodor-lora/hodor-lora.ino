@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <SoftwareSerial.h>
 #include "PCF8574.h"
@@ -9,10 +8,10 @@
 #define DEV_TF            0X02
 
 const int NUM_DOORS = 1;
-const int DEBOUNCE_DELAY = 100;  // 200 ms for debouncing
+const int DEBOUNCE_DELAY = 500;  // 200 ms for debouncing
 const int LED_PIN = LED_BUILTIN;
 const int BUTTON_PIN = 0;
-const int EXPANDER_ADDRESS = 0x38;
+const int EXPANDER_ADDRESS = 0x20;
 
 const int INT_PIN = 13;
 const int RX_PIN = 5; // 5=D1 D3=0
@@ -39,15 +38,31 @@ PCF8574 expander(14,12,EXPANDER_ADDRESS);
 
 SoftwareSerial lora(TX_PIN, RX_PIN);
 
-void loraCallBack(int address, char* msg, int snr, int rssi) {
+void loraCallBack(int address, const char* msgData, int snr, int rssi) {
   Serial.print("LCB: Address");
   Serial.print(address);
   Serial.print(" msg:");
-  Serial.print(msg);
+  Serial.print(msgData);
   Serial.print(" snr:");
   Serial.print(snr);
   Serial.print(" rssi:");
   Serial.println(rssi);
+  relay1On = 0;
+  relay2On = 0;
+  if (strstr(msgData,"1:on")) {
+    relay1On = 1;
+    expander.write(relayPin[0], LOW);
+    onTime = millis();
+  }
+  if (strstr(msgData,"2:on")) {
+    relay2On = 1;
+    expander.write(relayPin[1], LOW);
+    onTime = millis();
+  }
+  Serial.print("Relay 1:");
+  Serial.print(relay1On);
+  Serial.print(" Relay 2:");
+  Serial.println(relay2On);        
 }
 
 LoraComm lcm(&lora,loraCallBack);
@@ -55,60 +70,61 @@ LoraComm lcm(&lora,loraCallBack);
 void loraSend() {
   char buf[50];
   sprintf(buf,"[%d, %d, %d, %d, %d, %d]", lastOpenState1, lastOpenState2, lastClosedState1, lastClosedState2, relay1On, relay2On);
-  String b(buf);
-  String msgBuffer = "AT+SEND=0," + String(b.length()) + "," + b;
-  Serial.print("Sending:");
-  Serial.println(msgBuffer);
-  lora.print(msgBuffer + "\r\n");
+//  String b(buf);
+//  String msgBuffer = "AT+SEND=0," + String(b.length()) + "," + b;
+//  Serial.print("Sending:");
+//  Serial.println(msgBuffer);
+//  lora.print(msgBuffer + "\r\n");
+  lcm.send(0,buf,true);
 }
 
-void loraRead() {
+// void loraRead() {
 
-  String readBuffer;
-  while (lora.available()) {
-    int c = lora.read();
-    if (c=='\n' || c=='\r') {
-      // +RCV=50,5,HELLO,-99,40
-      if (readBuffer.length()==0) {
-        return;
-      }
-      Serial.print("Received:");
-      Serial.println(readBuffer);
-      if (readBuffer.startsWith("+RCV=")) {    
-        readBuffer.remove(0,5); // remove the '+RCV=' part
-        Serial.println(readBuffer);
-        String msgSize = getStringPartByNr(readBuffer, ',', 1);
-        String msgData = getStringPartByNr(readBuffer, ',', 2);
-        Serial.println(msgSize);
-        Serial.println(msgData);
-        if (msgData.length()==msgSize.toInt()) {
-          Serial.println("Same");
-          relay1On = 0;
-          relay2On = 0;
-          if (msgData.indexOf("1:on")!=-1) {
-            relay1On = 1;
-            expander.write(relayPin[0], LOW);
-            onTime = millis();
-          }
-          if (msgData.indexOf("2:on")!=-1) {
-            relay2On = 1;
-            expander.write(relayPin[1], LOW);
-            onTime = millis();
-          }
-          Serial.print("Relay 1:");
-          Serial.print(relay1On);
-          Serial.print(" Relay 2:");
-          Serial.println(relay2On);        
-        } else {
-          Serial.println("NOT Same");
-        }
-      }
-      readBuffer="";
-    } else {
-      readBuffer+=char(c);
-    }
-  }
-}
+//   String readBuffer;
+//   while (lora.available()) {
+//     int c = lora.read();
+//     if (c=='\n' || c=='\r') {
+//       // +RCV=50,5,HELLO,-99,40
+//       if (readBuffer.length()==0) {
+//         return;
+//       }
+//       Serial.print("Received:");
+//       Serial.println(readBuffer);
+//       if (readBuffer.startsWith("+RCV=")) {    
+//         readBuffer.remove(0,5); // remove the '+RCV=' part
+//         Serial.println(readBuffer);
+//         String msgSize = getStringPartByNr(readBuffer, ',', 1);
+//         String msgData = getStringPartByNr(readBuffer, ',', 2);
+//         Serial.println(msgSize);
+//         Serial.println(msgData);
+//         if (msgData.length()==msgSize.toInt()) {
+//           Serial.println("Same");
+//           relay1On = 0;
+//           relay2On = 0;
+//           if (msgData.indexOf("1:on")!=-1) {
+//             relay1On = 1;
+//             expander.write(relayPin[0], LOW);
+//             onTime = millis();
+//           }
+//           if (msgData.indexOf("2:on")!=-1) {
+//             relay2On = 1;
+//             expander.write(relayPin[1], LOW);
+//             onTime = millis();
+//           }
+//           Serial.print("Relay 1:");
+//           Serial.print(relay1On);
+//           Serial.print(" Relay 2:");
+//           Serial.println(relay2On);        
+//         } else {
+//           Serial.println("NOT Same");
+//         }
+//       }
+//       readBuffer="";
+//     } else {
+//       readBuffer+=char(c);
+//     }
+//   }
+// }
 
 void ICACHE_RAM_ATTR expanderInterrupt(void) {    
   ISR_Trapped = true;
@@ -127,7 +143,8 @@ void setup() {
 
   expander.begin();
 
-  lora.print("AT+NETWORKID?\r\n");
+  //lora.print("AT+NETWORKID?\r\n");
+  lcm.sendATCommand("AT+NETWORKID?");
   delay(200);
   
   Serial.println("Startup done");
@@ -156,11 +173,13 @@ void loop() {
     Serial.println("ISR timer Started");
   }
 
-  loraRead();  
+  //loraRead();  
+  lcm.loop();
 
   if (millis()-isrStartTime > DEBOUNCE_DELAY && isrHandled==false) {
 
-    lcm.send(0,"Hello World",true);
+//    lcm.send(0,"Hello World",true);
+//    delay(1000);
     
 //    LoraMessage lm(0,"Hello World",2,true);
 //    Serial.print("LoraMessage:>>");
@@ -171,7 +190,7 @@ void loop() {
 //    rm.parse("+RCV=3,16,Hello World,2,89,23,45");
 
     //lcm.parse("+RCV=3,16,Hello World,2,89,23,45");
-    lcm.parse("+RCV=3,16,Hello Worlx,2,89,23,45");
+//    lcm.parse("+RCV=3,16,Hello Worlx,2,89,23,45");
     
     Serial.println("ISR Servicing");
 
@@ -209,23 +228,23 @@ void loop() {
   }
 }
 
-String getStringPartByNr(String data, char separator, int index) {
-    int stringData = 0;        //variable to count data part nr 
-    String dataPart = "";      //variable to hole the return text
+// String getStringPartByNr(String data, char separator, int index) {
+//     int stringData = 0;        //variable to count data part nr 
+//     String dataPart = "";      //variable to hole the return text
 
-    for(int i = 0; i<data.length()-1; i++) {    //Walk through the text one letter at a time
-        if (data[i]==separator) {
-            //Count the number of times separator character appears in the text
-            stringData++;
-        } else if (stringData==index) {
-            //get the text when separator is the rignt one
-            dataPart.concat(data[i]);
-        } else if (stringData>index) {
-            //return text and stop if the next separator appears - to save CPU-time
-            return dataPart;
-            break;
-        }
-    }
-    //return text if this is the last part
-    return dataPart;
-}
+//     for(int i = 0; i<data.length()-1; i++) {    //Walk through the text one letter at a time
+//         if (data[i]==separator) {
+//             //Count the number of times separator character appears in the text
+//             stringData++;
+//         } else if (stringData==index) {
+//             //get the text when separator is the rignt one
+//             dataPart.concat(data[i]);
+//         } else if (stringData>index) {
+//             //return text and stop if the next separator appears - to save CPU-time
+//             return dataPart;
+//             break;
+//         }
+//     }
+//     //return text if this is the last part
+//     return dataPart;
+// }
