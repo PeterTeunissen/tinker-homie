@@ -6,6 +6,7 @@
 
 class TempSensor {
   public:
+    TempSensor();
     TempSensor(void (*tempCallback)(float temp), DallasTemperature *sensor, int interval);
     void loop();
   private:

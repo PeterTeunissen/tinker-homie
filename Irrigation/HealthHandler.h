@@ -6,6 +6,7 @@
 
 class HealthHandler {
   public:
+    HealthHandler();
     HealthHandler(void (*healthCallback)(unsigned int upTime, unsigned int rssi), void (*secondCallback)(), void (*rebootCallback)(), NTPClient *ntp);
     void loop();
     void serverPing();

@@ -10,6 +10,7 @@
 
 class Zone {
   public:
+    Zone();
     Zone(ValveHandler *v, PumpHandler *p, LevelSensors *l, FlowSensor *f, AlertHandler *a, int gracePeriod, int flowMinimum);
     void loop();
     void stopZone();

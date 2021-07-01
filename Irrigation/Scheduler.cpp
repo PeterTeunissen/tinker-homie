@@ -1,5 +1,8 @@
 #include "Scheduler.h"
 
+Scheduler::Scheduler(){  
+}
+
 Scheduler::Scheduler(AlertHandler *alertHandler) {
   m_alertHandler = alertHandler;
 }

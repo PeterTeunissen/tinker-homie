@@ -3,6 +3,9 @@
 
 #define HEALTH_INTERVAL 30000
 
+HealthHandler::HealthHandler(){
+}
+
 HealthHandler::HealthHandler( void (*healthCallback)(unsigned int upTime, unsigned int rssi), 
                               void (*secondCallback)(), 
                               void (*rebootCallback)(), 

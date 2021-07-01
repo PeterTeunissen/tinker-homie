@@ -1,5 +1,8 @@
 #include "AlertHandler.h"
 
+AlertHandler::AlertHandler() {  
+}
+
 AlertHandler::AlertHandler(void (*alertCallback)(boolean isRunning, int errNo, char *msg)) {
   m_alertCallback = alertCallback;
 }

@@ -61,19 +61,24 @@ PCF8574 expander(4, 15, 0x20);
 OneWire oneWire(TEMP_PIN); 
 DallasTemperature dallasSensors(&oneWire);
 
-Scheduler *scheduler;
-PumpHandler *pumpHandler;
-FlowSensor *flowSensor;
-LevelSensors *levelSensors;
-HealthHandler *healthHandler;
-AlertHandler *alertHandler;
-TempSensor *tempSensor;
+Scheduler scheduler;
+PumpHandler pumpHandler;
+FlowSensor flowSensor;
+LevelSensors levelSensors;
+HealthHandler healthHandler;
+AlertHandler alertHandler;
+TempSensor tempSensor;
 
-Zone *zoneA;
-Zone *zoneB;
-Zone *zoneC;
-Zone *zoneD;
+Zone zoneA;
+Zone zoneB;
+Zone zoneC;
+Zone zoneD;
 
+ValveHandler vh1;// = ValveHandler(1, VALVE_PIN_A, valveCallBack);
+ValveHandler vh2;// = ValveHandler(2, VALVE_PIN_B, valveCallBack);
+ValveHandler vh3;// = ValveHandler(3, VALVE_PIN_C, valveCallBack);
+ValveHandler vh4;// = ValveHandler(4, VALVE_PIN_D, valveCallBack);
+  
 boolean g_refreshDisplay=false;
 char g_temp[8];
 char g_timeZoneBuf[30] = "";
@@ -258,11 +263,11 @@ void healthCallBack(unsigned int upTime, unsigned int rssi) {
 }
 
 void flowTick() {
-  flowSensor->handleIRQ();  
+  flowSensor.handleIRQ();  
 }
 
 void expanderIRQ() {
-  levelSensors->handleIRQ();
+  levelSensors.handleIRQ();
 }
 
 void setupWifi() {
@@ -327,7 +332,7 @@ void mqttCallBack(char* topic, byte *payload, unsigned int length) {
 
   if (strcmp(topic, MQTT_RECEIVE_PING_TOPIC)==0) {
     Serial.println("Message on ping topic:" + message);
-    healthHandler->serverPing();
+    healthHandler.serverPing();
     char p[message.length()+3];
     strcpy(p, message.c_str());
     publishMQTTData("pong", p);
@@ -337,7 +342,7 @@ void mqttCallBack(char* topic, byte *payload, unsigned int length) {
   if (strcmp(topic, MQTT_RECEIVE_TOPIC)==0) {
     
     if (message=="STOP") {
-      scheduler->stopSchedule();
+      scheduler.stopSchedule();
     } 
   
     if (message.startsWith("SCHEDULE:")) {
@@ -381,7 +386,7 @@ void mqttCallBack(char* topic, byte *payload, unsigned int length) {
         }        
         pch = strtok(NULL, ",");
       }
-      scheduler->scheduleZones(times, gracePeriod, minimumFlow);    
+      scheduler.scheduleZones(times, gracePeriod, minimumFlow);    
     }
   }
 }
@@ -441,23 +446,28 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(FLOW_PIN), flowTick, FALLING);
   attachInterrupt(digitalPinToInterrupt(EXPANDER_IRQ_PIN), expanderIRQ, FALLING);
   
-  pumpHandler = new PumpHandler(PUMP_PIN, pumpCallBack);
-  flowSensor = new FlowSensor(flowCallBack);
-  levelSensors = new LevelSensors(&expander, levelCallBack);
-  healthHandler = new HealthHandler(healthCallBack, secondCallBack, interruptReboot, &timeClient);
-  alertHandler = new AlertHandler(alertCallBack);
-  tempSensor = new TempSensor(tempCallBack, &dallasSensors, TEMP_INTERVAL);
-      
-  zoneA = new Zone(new ValveHandler(1, VALVE_PIN_A, valveCallBack), pumpHandler, levelSensors, flowSensor, alertHandler, LOW_FLOW_GRACE_MILLI_SECONDS, FLOW_MINIMUM);
-  zoneB = new Zone(new ValveHandler(2, VALVE_PIN_B, valveCallBack), pumpHandler, levelSensors, flowSensor, alertHandler, LOW_FLOW_GRACE_MILLI_SECONDS, FLOW_MINIMUM);
-  zoneC = new Zone(new ValveHandler(3, VALVE_PIN_C, valveCallBack), pumpHandler, levelSensors, flowSensor, alertHandler, LOW_FLOW_GRACE_MILLI_SECONDS, FLOW_MINIMUM);
-  zoneD = new Zone(new ValveHandler(4, VALVE_PIN_D, valveCallBack), pumpHandler, levelSensors, flowSensor, alertHandler, LOW_FLOW_GRACE_MILLI_SECONDS, FLOW_MINIMUM);
+  pumpHandler = PumpHandler(PUMP_PIN, pumpCallBack);
+  flowSensor = FlowSensor(flowCallBack);
+  levelSensors = LevelSensors(&expander, levelCallBack);
+  healthHandler = HealthHandler(healthCallBack, secondCallBack, interruptReboot, &timeClient);
+  alertHandler = AlertHandler(alertCallBack);
+  tempSensor = TempSensor(tempCallBack, &dallasSensors, TEMP_INTERVAL);
 
-  scheduler = new Scheduler(alertHandler);
-  scheduler->addZone(zoneA);
-  scheduler->addZone(zoneB);
-  scheduler->addZone(zoneC);
-  scheduler->addZone(zoneD);
+  vh1 = ValveHandler(1, VALVE_PIN_A, valveCallBack);
+  vh2 = ValveHandler(2, VALVE_PIN_B, valveCallBack);
+  vh3 = ValveHandler(3, VALVE_PIN_C, valveCallBack);
+  vh4 = ValveHandler(4, VALVE_PIN_D, valveCallBack);
+  
+  zoneA = Zone(&vh1, &pumpHandler, &levelSensors, &flowSensor, &alertHandler, LOW_FLOW_GRACE_MILLI_SECONDS, FLOW_MINIMUM);
+  zoneB = Zone(&vh2, &pumpHandler, &levelSensors, &flowSensor, &alertHandler, LOW_FLOW_GRACE_MILLI_SECONDS, FLOW_MINIMUM);
+  zoneC = Zone(&vh3, &pumpHandler, &levelSensors, &flowSensor, &alertHandler, LOW_FLOW_GRACE_MILLI_SECONDS, FLOW_MINIMUM);
+  zoneD = Zone(&vh4, &pumpHandler, &levelSensors, &flowSensor, &alertHandler, LOW_FLOW_GRACE_MILLI_SECONDS, FLOW_MINIMUM);
+
+  scheduler = Scheduler(&alertHandler);
+  scheduler.addZone(&zoneA);
+  scheduler.addZone(&zoneB);
+  scheduler.addZone(&zoneC);
+  scheduler.addZone(&zoneD);
 
   display.init();
   display.setFont(ArialMT_Plain_10);
@@ -476,7 +486,7 @@ void setup() {
   
   delay(1500);
 
-  scheduler->init();
+  scheduler.init();
 }
 
 void interruptReboot() {
@@ -616,12 +626,12 @@ void loop() {
     g_currentHour = timeClient.getHours();
   }
   
-  flowSensor->loop();
-  healthHandler->loop();
-  levelSensors->loop();
-  pumpHandler->loop();
-  tempSensor->loop();
-  scheduler->loop();
+  flowSensor.loop();
+  healthHandler.loop();
+  levelSensors.loop();
+  pumpHandler.loop();
+  tempSensor.loop();
+  scheduler.loop();
   
   if (g_refreshDisplay) {
     display.display();

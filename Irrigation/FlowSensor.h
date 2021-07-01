@@ -5,6 +5,7 @@
 
 class FlowSensor {
   public:
+    FlowSensor();
     FlowSensor(void (*flowCallback)(unsigned int flow));
     void handleIRQ();
     void loop();
