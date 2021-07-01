@@ -1,5 +1,8 @@
 #include "FlowSensor.h"
 
+FlowSensor::FlowSensor() {  
+}
+
 FlowSensor::FlowSensor(void (*flowCallback)(unsigned int flow)) {
   m_flowCallback = flowCallback;
 }

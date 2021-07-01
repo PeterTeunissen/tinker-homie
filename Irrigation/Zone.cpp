@@ -1,5 +1,8 @@
 #include "Zone.h"
 
+Zone::Zone(){ 
+}
+
 Zone::Zone( ValveHandler *v, 
             PumpHandler *p, 
             LevelSensors *l, 
@@ -32,12 +35,12 @@ void Zone::loop() {
     
       unsigned int onTime = millis()-m_startTime;
 
-      if (onTime>m_gracePeriod && m_flowSensor->getFlow()<m_flowMinimum) {
-        m_endInError = true;
-        stopZone();
-        m_alertHandler->alert(8, "Not enough water flow!");
-        Serial.println("Error 8, Not enough water flow");
-      }
+//      if (onTime>m_gracePeriod && m_flowSensor->getFlow()<m_flowMinimum) {
+//        m_endInError = true;
+//        stopZone();
+//        m_alertHandler->alert(8, "Not enough water flow!");
+//        Serial.println("Error 8, Not enough water flow");
+//      }
 
       // check the running flag again, since it could have been reset by the minimum flow check
       if (m_running) {

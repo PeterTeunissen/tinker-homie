@@ -7,6 +7,7 @@
 
 class Scheduler {
   public:
+    Scheduler();
     Scheduler(AlertHandler *alertHandler);
     void init();
     void stopSchedule();

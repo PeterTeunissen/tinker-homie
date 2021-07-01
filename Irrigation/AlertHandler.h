@@ -5,6 +5,7 @@
 
 class AlertHandler {
   public:
+    AlertHandler();
     AlertHandler(void (*alertCallback)(boolean isRunning, int errNo, char *msg));
     void alert(int errNo, char *msg);
     void loop();

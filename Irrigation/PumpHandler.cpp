@@ -1,5 +1,8 @@
 #include "PumpHandler.h"
 
+PumpHandler::PumpHandler(){
+}
+
 PumpHandler::PumpHandler( int gpioPin, 
                           void (*pumpCallback)(boolean isOn)) {
 

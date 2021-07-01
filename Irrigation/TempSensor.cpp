@@ -1,5 +1,8 @@
 #include "TempSensor.h"
 
+TempSensor::TempSensor(){  
+}
+
 TempSensor::TempSensor( void (*tempCallback)(float temp), 
                         DallasTemperature *sensor, 
                         int intervalMillis) {

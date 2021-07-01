@@ -5,6 +5,7 @@
 
 class PumpHandler {
   public:
+    PumpHandler();
     PumpHandler(int gpioPin, void (*pumpCallback)(boolean isOn));
     void pumpOn();
     void pumpOff();

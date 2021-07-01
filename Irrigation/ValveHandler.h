@@ -5,6 +5,7 @@
 
 class ValveHandler {
   public:
+    ValveHandler();
     ValveHandler(int zoneId, int gpioPin, void (*valveCallback)(unsigned int zoneId, boolean isOn, int timeLeft));
     void loop();
     void setRunTimeLeft(int i);

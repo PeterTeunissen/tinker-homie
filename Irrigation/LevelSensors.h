@@ -6,6 +6,7 @@
 
 class LevelSensors {
   public:
+    LevelSensors();
     LevelSensors(PCF8574 *expander, void (*levelCallback)(unsigned int));
     int getTankLevel();
     boolean enoughWater();
