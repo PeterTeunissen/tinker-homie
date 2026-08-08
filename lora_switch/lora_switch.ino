@@ -12,6 +12,8 @@ const int LED_ON = LOW;
 const int LED_OFF = HIGH;
 const int RELAY_ON = HIGH;
 const int RELAY_OFF = LOW;
+const int LED_1 = D1;
+const int LED_2 = D2;
 
 // Pin Configurations
 const int LED_PIN = LED_BUILTIN;    // Built-in LED or external LED
@@ -20,6 +22,8 @@ const int RELAY_PIN = D7;  // Relay control pin
 // Global states to track output conditions and messaging
 bool systemState = false; 
 String latestLoraMessage = "No message received yet."; 
+
+int ledStatus = 0;
 
 // Create web server instance
 ESP8266WebServer server(80);
@@ -51,6 +55,8 @@ void setup() {
   delay(1000);
   
   // Initialize Pins
+  pinMode(LED_1, OUTPUT);
+  pinMode(LED_2, OUTPUT);
   pinMode(LED_PIN, OUTPUT);
   pinMode(RELAY_PIN, OUTPUT);
   
@@ -78,6 +84,28 @@ void setup() {
 
 boolean d = false;
 String loraData="";
+
+void ledShow() {
+
+  if (ledStatus>2) {
+    ledStatus=1;
+  }
+
+  if (ledStatus==0) {
+    digitalWrite(LED_1, LOW);    
+    digitalWrite(LED_2, LOW);    
+  }
+
+  if (ledStatus==1) {
+    digitalWrite(LED_1, HIGH);    
+    digitalWrite(LED_2, LOW);    
+  }
+
+  if (ledStatus==2) {
+    digitalWrite(LED_1, LOW);    
+    digitalWrite(LED_2, HIGH);    
+  }
+}
 
 void loop() {
   // 1. Handle incoming web server clients
@@ -111,11 +139,17 @@ void loop() {
       systemState = true;
       digitalWrite(LED_PIN, LED_ON);
       digitalWrite(RELAY_PIN, RELAY_ON);
+      ledStatus++;
     } 
     else if (loraData.indexOf("OFF") >= 0) {
       systemState = false;
       digitalWrite(LED_PIN, LED_OFF);
       digitalWrite(RELAY_PIN, RELAY_OFF);
+      ledStatus++;
+    } else {
+      ledStatus=0;
     }
   }
+
+  ledShow();
 }
