@@ -22,6 +22,7 @@ char mqtt_port[6]      = "1883";
 char mqtt_user[40]     = "";
 char mqtt_pass[40]     = "";
 char mqtt_topic[50]    = "/homie/loraGateway";
+char mqtt_reply_topic[50]    = "/homie/loraGatewayReply";
 
 // Flag for saving configuration
 bool shouldSaveConfig = false;
@@ -134,6 +135,7 @@ void setup() {
           if(json["mqtt_user"])   strcpy(mqtt_user, json["mqtt_user"]);
           if(json["mqtt_pass"])   strcpy(mqtt_pass, json["mqtt_pass"]);
           if(json["mqtt_topic"])  strcpy(mqtt_topic, json["mqtt_topic"]);
+          if(json["mqtt_reply_topic"])  strcpy(mqtt_reply_topic, json["mqtt_reply_topic"]);
         } else {
           Serial.println("Failed to parse config JSON string.");
         }
@@ -151,6 +153,7 @@ void setup() {
   WiFiManagerParameter custom_mqtt_user("user", "MQTT Username", mqtt_user, 40);
   WiFiManagerParameter custom_mqtt_pass("pass", "MQTT Password", mqtt_pass, 40, "type='password'");
   WiFiManagerParameter custom_mqtt_topic("topic", "MQTT Topic", mqtt_topic, 50);
+  WiFiManagerParameter custom_mqtt_reply_topic("reply_topic", "MQTT Reply Topic", mqtt_reply_topic, 50);
 
   // Set configuration save callback hook
   wifiManager.setSaveConfigCallback(saveConfigCallback);
@@ -161,6 +164,7 @@ void setup() {
   wifiManager.addParameter(&custom_mqtt_user);
   wifiManager.addParameter(&custom_mqtt_pass);
   wifiManager.addParameter(&custom_mqtt_topic);
+  wifiManager.addParameter(&custom_mqtt_reply_topic);
 
   // Connects automatically using saved credentials. Spins up portal if connection fails.
   if (!wifiManager.autoConnect("ESP-LoRa-Gateway")) {
@@ -179,6 +183,7 @@ void setup() {
   strcpy(mqtt_user, custom_mqtt_user.getValue());
   strcpy(mqtt_pass, custom_mqtt_pass.getValue());
   strcpy(mqtt_topic, custom_mqtt_topic.getValue());
+  strcpy(mqtt_reply_topic, custom_mqtt_reply_topic.getValue());
 
   // Save the custom parameters to LittleFS if changed
   if (shouldSaveConfig) {
@@ -189,6 +194,7 @@ void setup() {
     json["mqtt_user"]   = mqtt_user;
     json["mqtt_pass"]   = mqtt_pass;
     json["mqtt_topic"]  = mqtt_topic;
+    json["mqtt_reply_topic"]  = mqtt_reply_topic;
 
     File configFile = LittleFS.open("/config.json", "w");
     if (!configFile) {
@@ -278,11 +284,78 @@ void ledShow() {
   }
 }
 
+void parseAndPublishLoRaMessage(String rylrStr) {
+  
+  // 1. Clean the string of carriage returns and newlines
+  rylrStr.trim();
+
+  // 2. Locate boundaries from the front for Address
+  int firstComma = rylrStr.indexOf(',');
+  int secondComma = rylrStr.indexOf(',', firstComma + 1);
+  
+  // Extract and convert address
+  int address = rylrStr.substring(firstComma + 1, secondComma).toInt();
+
+  // 3. Locate boundaries from the back for RSSI and SNR
+  int lastComma = rylrStr.lastIndexOf(',');
+  int secondLastComma = rylrStr.lastIndexOf(',', lastComma - 1);
+
+  // Extract and convert RSSI and SNR
+  int rssi = rylrStr.substring(secondLastComma + 1, lastComma).toInt();
+  int snr = rylrStr.substring(lastComma + 1).toInt();
+
+  // 4. Extract everything in the middle as the message payload
+  String message = rylrStr.substring(secondComma + 1, secondLastComma);
+
+  // 5. Build the JSON document
+  // Allocate static memory on the stack (fast and safe for small JSONs)
+  DynamicJsonDocument doc(1024);
+   
+  doc["address"] = address;
+  doc["message"] = message;
+  doc["rssi"] = rssi;
+  doc["snr"] = snr;
+
+  // 6. Serialize JSON document into a printable String
+  String jsonOutput;
+  serializeJson(doc, jsonOutput);
+
+  int jsonLength = jsonOutput.length() + 1;
+  char jsonBuffer[jsonLength];
+  jsonOutput.toCharArray(jsonBuffer, jsonLength);
+
+  if (mqttClient.publish(mqtt_reply_topic, jsonBuffer)) {
+    Serial.println("MQTT Reply Publish Successful!");
+    Serial.print("Payload: ");
+    Serial.println(jsonBuffer);
+    ledStatus++;
+  } else {
+    Serial.println("MQTT Publish Failed!");
+    ledStatus=0;
+  }  
+}
+
 void loop() {
   if (!mqttClient.connected()) {
     reconnectMQTT();
   }
   mqttClient.loop();
 
+  if (loraSerial.available()>0) {
+    
+    String incomingString = loraSerial.readStringUntil('\n');
+    incomingString.trim(); // Remove extra carriage returns or spaces
+
+    Serial.print("Received LoraMessage:");
+    Serial.println(incomingString);
+    
+    // Check if the message starts with "+RCV="
+    if (incomingString.startsWith("+RCV=")) {
+      parseAndPublishLoRaMessage(incomingString);
+    } else {
+      Serial.println("Lora Message not an RCV message");   
+    }
+  }
+   
   ledShow();
 }
