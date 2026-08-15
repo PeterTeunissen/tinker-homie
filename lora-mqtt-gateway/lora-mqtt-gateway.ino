@@ -285,33 +285,70 @@ void ledShow() {
 }
 
 void parseAndPublishLoRaMessage(String rylrStr) {
+
+  // Strip off the "+RCV=" string
+  String payload = rylrStr.substring(5);
+
+  // 2. Find and extract the Address
+  int comma1 = payload.indexOf(',');
+  if (comma1 == -1) {
+    Serial.println("Can not find first comma");
+    ledStatus=0;
+    return;
+  }
   
-  // 1. Clean the string of carriage returns and newlines
-  rylrStr.trim();
-
-  // 2. Locate boundaries from the front for Address
-  int firstComma = rylrStr.indexOf(',');
-  int secondComma = rylrStr.indexOf(',', firstComma + 1);
+  String addrStr = payload.substring(0, comma1);
+  int address=addrStr.toInt();
   
-  // Extract and convert address
-  int address = rylrStr.substring(firstComma + 1, secondComma).toInt();
+  // 3. Find and extract the Length
+  int comma2 = payload.indexOf(',', comma1 + 1);
+  if (comma2 == -1) {
+    Serial.println("Can not find second comma");
+    ledStatus=0;
+    return;
+  }
 
-  // 3. Locate boundaries from the back for RSSI and SNR
-  int lastComma = rylrStr.lastIndexOf(',');
-  int secondLastComma = rylrStr.lastIndexOf(',', lastComma - 1);
+  String lenStr = payload.substring(comma1 + 1, comma2);
 
-  // Extract and convert RSSI and SNR
-  int rssi = rylrStr.substring(secondLastComma + 1, lastComma).toInt();
-  int snr = rylrStr.substring(lastComma + 1).toInt();
+  // Convert header values to integers
+  int len = lenStr.toInt();
 
-  // 4. Extract everything in the middle as the message payload
-  String message = rylrStr.substring(secondComma + 1, secondLastComma);
+  // 4. Use the explicit length to cleanly slice out the Data payload
+  int dataStart = comma2 + 1;
+  if (dataStart + len > payload.length()) {
+    Serial.println("String to short to get message from");
+    ledStatus=0;
+    return; // Error: Payload string is shorter than the stated length
+  }
+  
+  String message = payload.substring(dataStart, dataStart + len);
+
+  // 5. Parse RSSI and SNR from the remaining string tail
+  String remainder = payload.substring(dataStart + len);
+  if (!remainder.startsWith(",")) {
+    Serial.println("String to short to get rssi and snr");
+    return; // Error: Missing formatting comma after data payload
+  }
+  
+  // Skip the leading comma of the remainder
+  remainder = remainder.substring(1); 
+  int comma3 = remainder.indexOf(',');
+  if (comma3 == -1) {
+    Serial.println("String to short to get rssi and snr");
+    return;
+  }
+
+  String rssiStr = remainder.substring(0, comma3);
+  String snrStr = remainder.substring(comma3 + 1);
+
+  int rssi = rssiStr.toInt();
+  int snr = snrStr.toInt();
 
   // 5. Build the JSON document
   // Allocate static memory on the stack (fast and safe for small JSONs)
   DynamicJsonDocument doc(1024);
    
-  doc["address"] = address;
+  doc["address"] = addrStr;
   doc["message"] = message;
   doc["rssi"] = rssi;
   doc["snr"] = snr;
