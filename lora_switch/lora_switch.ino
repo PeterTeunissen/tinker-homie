@@ -2,8 +2,13 @@
 #include <ESP8266WebServer.h>
 #include <SoftwareSerial.h>
 
+#include "RylrLink.h"
+
+#define LORA_DEBUG 1
+
 // SoftwareSerial: RX = digital pin 2, TX = digital pin 3
 SoftwareSerial loraSerial(D5,D6); 
+RylrLink loraLink(loraSerial);
 
 // Wi-Fi Configuration
 const char* ssid = "LoraSwitch-";
@@ -24,11 +29,51 @@ bool systemState = false;
 String latestLoraMessage = "No message received yet."; 
 
 int ledStatus = 0;
+int m_lastSnr=0;
+int m_lastRssi=0;
 
 // Create web server instance
 ESP8266WebServer server(80);
 
-// Build and serve the webpage with current values
+// CALLBACK 1: Handles incoming structural text data payload messages
+void handleCustomData(int senderID, String message, int rssi, int snr) {
+  Serial.print("\n[Data Callback] Received from ");
+  Serial.print(senderID);
+  Serial.print(": ");
+  Serial.print(message);
+  Serial.print(" rssi(raw): ");
+  Serial.print(rssi);
+  Serial.print(" snr: ");
+  Serial.println(snr);
+
+  latestLoraMessage = message;
+  m_lastSnr = snr;
+  m_lastRssi = rssi;
+
+  if (message.indexOf("ON") >= 0) {
+    systemState = true;
+    digitalWrite(LED_PIN, LED_ON);
+    digitalWrite(RELAY_PIN, RELAY_ON);
+    ledStatus++;
+  } 
+  else if (message.indexOf("OFF") >= 0) {
+    systemState = false;
+    digitalWrite(LED_PIN, LED_OFF);
+    digitalWrite(RELAY_PIN, RELAY_OFF);
+    ledStatus++;
+  } else {
+    ledStatus=0;
+  }
+
+}
+
+// CALLBACK 2: Updates whenever the library state switches
+void handleStateChange(bool led1State, bool led2State){
+  digitalWrite(LED_1, led1State ? HIGH : LOW);
+  digitalWrite(LED_2, led2State ? HIGH : LOW);
+}
+
+//Build and serve the webpage with current values
 void handleRoot() {
   String stateString = systemState ? "HIGH (ON)" : "LOW (OFF)";
   
@@ -38,6 +83,8 @@ void handleRoot() {
   html += "<p><b>LED Pin (D1):</b> " + stateString + "</p>";
   html += "<p><b>Relay Pin (D2):</b> " + stateString + "</p>";
   html += "<p><b>Latest Raw LoRA Message:</b> <pre>" + latestLoraMessage + "</pre></p>";
+  html += "<p><b>Latest RSSI:</b>" + String(m_lastRssi) + "</p>";
+  html += "<p><b>Latest SNR:</b> " + String(m_lastSnr) + "</p>";
   html += "<p><i>Page auto-refreshes every 3 seconds.</i></p>";
   html += "</body></html>";
   
@@ -79,6 +126,9 @@ void setup() {
   server.onNotFound(handleNotFound);
   server.begin();
 
+  // Initialize library with callbacks: dataCallback, stateCallback, maxRetries, retryInterval
+  loraLink.begin(handleCustomData, handleStateChange, 5, 3000);
+
   Serial.println("Started...");
 }
 
@@ -111,45 +161,47 @@ void loop() {
   // 1. Handle incoming web server clients
   server.handleClient();
 
-  d=false;
-  loraData="";
-    
-  if (loraSerial.available()>0) {
-    loraData = loraSerial.readStringUntil('\n');
-    Serial.print("softwareSerial message:");
-    Serial.println(loraData);
-    d=true;
-  }
-
-  if (Serial.available()>0) {
-    loraData = Serial.readStringUntil('\n');
-    Serial.print("Serial message:");
-    Serial.println(loraData);
-    d=true;
-  }
-
-
-  if (d) {
-    loraData.trim(); // Remove whitespace or newlines
-    // Save the exact raw message to display on the webpage
-    latestLoraMessage = loraData;
-    
-    // Check string for content keywords
-    if (loraData.indexOf("ON") >= 0) {
-      systemState = true;
-      digitalWrite(LED_PIN, LED_ON);
-      digitalWrite(RELAY_PIN, RELAY_ON);
-      ledStatus++;
-    } 
-    else if (loraData.indexOf("OFF") >= 0) {
-      systemState = false;
-      digitalWrite(LED_PIN, LED_OFF);
-      digitalWrite(RELAY_PIN, RELAY_OFF);
-      ledStatus++;
-    } else {
-      ledStatus=0;
-    }
-  }
+  loraLink.update();
+  
+//  d=false;
+//  loraData="";
+//    
+//  if (loraSerial.available()>0) {
+//    loraData = loraSerial.readStringUntil('\n');
+//    Serial.print("softwareSerial message:");
+//    Serial.println(loraData);
+//    d=true;
+//  }
+//
+//  if (Serial.available()>0) {
+//    loraData = Serial.readStringUntil('\n');
+//    Serial.print("Serial message:");
+//    Serial.println(loraData);
+//    d=true;
+//  }
+//
+//
+//  if (d) {
+//    loraData.trim(); // Remove whitespace or newlines
+//    // Save the exact raw message to display on the webpage
+//    latestLoraMessage = loraData;
+//    
+//    // Check string for content keywords
+//    if (loraData.indexOf("ON") >= 0) {
+//      systemState = true;
+//      digitalWrite(LED_PIN, LED_ON);
+//      digitalWrite(RELAY_PIN, RELAY_ON);
+//      ledStatus++;
+//    } 
+//    else if (loraData.indexOf("OFF") >= 0) {
+//      systemState = false;
+//      digitalWrite(LED_PIN, LED_OFF);
+//      digitalWrite(RELAY_PIN, RELAY_OFF);
+//      ledStatus++;
+//    } else {
+//      ledStatus=0;
+//    }
+//  }
 
   ledShow();
 }
