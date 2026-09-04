@@ -88,13 +88,32 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   }  
 }
 
-void setup() {
+void slurpLora() {
+  if (loraSerial.available()>0) {
+    
+    String incomingString = loraSerial.readStringUntil('\n');
+    incomingString.trim(); // Remove extra carriage returns or spaces
 
-  WiFiManager wifiManager;
+    Serial.print("Received LoraMessage:");
+    Serial.println(incomingString);    
+  }  
+}
+
+void setup() {
 
   Serial.begin(115200);
   loraSerial.begin(9600); // RYLR default baud rate
+
+  delay(1000);
+  loraSerial.println("AT+ADDRESS?");
+  slurpLora();
   
+  delay(1000);  
+  loraSerial.println("AT+NETWORKID?");
+  slurpLora();
+
+  WiFiManager wifiManager;
+
   Serial.println("\nMounting LittleFS file system...");
 
   pinMode(TRIGGER_PIN, INPUT_PULLUP);
@@ -323,6 +342,13 @@ void parseAndPublishLoRaMessage(String rylrStr) {
   
   String message = payload.substring(dataStart, dataStart + len);
 
+  if (message.indexOf("PING") > -1) {
+    Serial.print("Replying PONG to PING from address:");
+    Serial.println(addrStr); 
+    loraSerial.println("AT+SEND=" + addrStr + ",4,PONG");
+    return;
+  }
+  
   // 5. Parse RSSI and SNR from the remaining string tail
   String remainder = payload.substring(dataStart + len);
   if (!remainder.startsWith(",")) {
