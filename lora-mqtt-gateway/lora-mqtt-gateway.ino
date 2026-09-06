@@ -101,7 +101,7 @@ void slurpLora() {
 
 void setup() {
 
-  Serial.begin(115200);
+  Serial.begin(9600);
   loraSerial.begin(9600); // RYLR default baud rate
 
   delay(1000);
@@ -374,7 +374,7 @@ void parseAndPublishLoRaMessage(String rylrStr) {
   // Allocate static memory on the stack (fast and safe for small JSONs)
   DynamicJsonDocument doc(1024);
    
-  doc["address"] = addrStr;
+  doc["address"] = address;
   doc["message"] = message;
   doc["rssi"] = rssi;
   doc["snr"] = snr;
