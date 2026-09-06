@@ -7,6 +7,10 @@
 #include <SoftwareSerial.h>
 #include <ArduinoJson.h>
 
+#define LORA_DEBUG
+
+#include "RylrLink.h"
+
 // Wi-Fi Configuration
 const char* ssid = "LoraHodor-";
 const char* password = "password123";
@@ -14,25 +18,50 @@ const char* password = "password123";
 /************ Options **************************/
 #define DEV_TF            0X02
 
+// NodeMCU silk pin to GPIO/code mapping
+#define D0 16
+#define D1 5
+#define D2 4
+#define D3 0
+#define D4 2
+#define D5 14
+#define D6 12
+#define D7 13
+#define D8 15
+
 const int NUM_DOORS = 1;
 const int DEBOUNCE_DELAY = 500;  // 200 ms for debouncing
 const int LED_PIN = LED_BUILTIN;
 const int BUTTON_PIN = 0;
 const int EXPANDER_ADDRESS = 0x20;
+const int BUZZER_PIN = D0;
 
 int openPin[2] = {PIN_0,PIN_2};
 int closedPin[2] = {PIN_1,PIN_3};
 int relayPin[2]= {PIN_4,PIN_5};
-   
+
 int lastOpenState1 = -1;
 int lastOpenState2 = -1;
 int lastClosedState1 = -1;
 int lastClosedState2 = -1;
 char relay_1_val[10];
 char relay_2_val[10];
+
+bool turnRelay1On = false;
+bool turnRelay2On = false;
+bool buzzerIsOn = false;
+int buzzer_on_time = 900;
+int buzzer_off_time = 400;
+int buzzer_total_count = 3;
+int buzzer_count = 0;
+int last_buzzer_time = 0;
+bool relaysArmed = false;
+bool pinState = false;
 int relay1On = 0;
 int relay2On = 0;
 unsigned long onTime;
+int m_lastSnr;
+int m_lastRssi;
 
 volatile int ISR_Trapped = false; // Connected to D7
 int isrHandled = true;
@@ -40,48 +69,50 @@ int isrStartTime = -1;
 String gatewayAddress="";
 String latestLoraMessage="";
 
-PCF8574 expander(14,12,EXPANDER_ADDRESS);
+const int INT_PIN = D7; // 13;
+const int RX_PIN = D4; // 0;
+const int TX_PIN = D3; // 2;
+const int SDA_PIN = D5; // 14;
+const int SCL_PIN = D6; // 12;
 
-SoftwareSerial lora(4,5);
+PCF8574 expander(SDA_PIN,SCL_PIN,EXPANDER_ADDRESS);
 
-const int INT_PIN = 13;
+SoftwareSerial lora(RX_PIN,TX_PIN);
+
+// Instantiating our custom library instance
+RylrLink loraLink(lora);
+const int LED1_PIN = PIN_6;
+const int LED2_PIN = PIN_7;
+
 
 // Create web server instance
 ESP8266WebServer server(80);
 
-void parseAndHandleLoRaMessage(String payload) {
+// CALLBACK 1: Handles incoming structural text data payload messages
+void handleCustomData(int senderID, String message, int rssi, int snr) {
+  Serial.print("\n[Data Callback] Received from ");
+  Serial.print(senderID);
+  Serial.print(" message: ");
+  Serial.print(message);
+  Serial.print(" rssi: ");
+  Serial.print(rssi);
+  Serial.print(" snr: ");
+  Serial.println(snr);
 
-    // 1. Clean the string of carriage returns and newlines
-  payload.trim();
+  latestLoraMessage = message;
+  m_lastSnr = snr;
+  m_lastRssi = rssi;
 
-  // Remove first 5 characters "+RCV="
-  String rylrStr = payload.substring(5);
- 
-  // Message format from a Lora module is:  +RCV=44,5,hello,-6,-10
-  // 44 = address of sending lora node
-  // 5 = length of message
-  // -6 = rssi
-  // -10 = snr
-  
-  // 2. Locate boundaries from the front for Address
-  int firstComma = rylrStr.indexOf(',');
-  int secondComma = rylrStr.indexOf(',', firstComma + 1);
-  
-  // Extract and convert address
-  int address = rylrStr.substring(firstComma + 1, secondComma).toInt();
+  parseAndHandleLoRaMessage(message);
+}
 
-  gatewayAddress = String(address);
-  
-  // 3. Locate boundaries from the back for RSSI and SNR
-  int lastComma = rylrStr.lastIndexOf(',');
-  int secondLastComma = rylrStr.lastIndexOf(',', lastComma - 1);
+// CALLBACK 2: Updates whenever the library state switches
+void handleStateChange(bool led1State, bool led2State){
+  expander.write(LED1_PIN, led1State ? HIGH : LOW);
+  expander.write(LED2_PIN, led2State ? HIGH : LOW);
+}
 
-  // Extract and convert RSSI and SNR
-  int rssi = rylrStr.substring(secondLastComma + 1, lastComma).toInt();
-  int snr = rylrStr.substring(lastComma + 1).toInt();
-
-  // 4. Extract everything in the middle as the message payload
-  String message = rylrStr.substring(secondComma + 1, secondLastComma);
+void parseAndHandleLoRaMessage(String message) {
 
   DynamicJsonDocument json(1024);
   auto deserializeError = deserializeJson(json, message.c_str());
@@ -100,22 +131,26 @@ void parseAndHandleLoRaMessage(String payload) {
     }
   }
 
-  relay1On = 0;
-  relay2On = 0;
+  // relay1On = 0;
+  // relay2On = 0;
+  turnRelay1On = false;
+  turnRelay2On = false;
   if (strstr(relay_1_val,"on")) {
-    relay1On = 1;
-    expander.write(relayPin[0], LOW);
-    onTime = millis();
+    turnRelay1On = true;
+    // relay1On = 1;
+    // expander.write(relayPin[0], LOW);
+    // onTime = millis();
   }
   if (strstr(relay_2_val,"on")) {
-    relay2On = 1;
-    expander.write(relayPin[1], LOW);
-    onTime = millis();
+    turnRelay2On = true;
+    // relay2On = 1;
+    // expander.write(relayPin[1], LOW);
+    // onTime = millis();
   }
   Serial.print("Relay 1:");
-  Serial.print(relay1On);
+  Serial.print(turnRelay1On);
   Serial.print(" Relay 2:");
-  Serial.println(relay2On);
+  Serial.println(turnRelay2On);
 }
 
 // { "source":"hodor", "open_1":1, "open_2":0, "closed_1":1, "closed_2":0, "relay_1":0, "relay_2":1 }"
@@ -124,14 +159,13 @@ void parseAndHandleLoRaMessage(String payload) {
 
 void loraSend() {
   char buf[200];
-  sprintf(buf,"{ \"source\":\"hodor\", \"open_1\":%d, \"open_2\":%d, \"closed_1\":%d, \"closed_2\":%d, \"relay_1\":%d, \"relay_2\":%d }", lastOpenState1, lastOpenState2, lastClosedState1, lastClosedState2, relay1On, relay2On);
-  String snd = String(buf);
-  String loraCommand = "AT+SEND=" + gatewayAddress + "," + snd.length() + "," + snd;
+  sprintf(buf,"{ source:\"hodor\", open_1:%d, open_2:%d, closed_1:%d, closed_2:%d, relay_1:%d, relay_2:%d }", lastOpenState1, lastOpenState2, lastClosedState1, lastClosedState2, relay1On, relay2On);
+  String loraCommand = String(buf);
 
   Serial.print("Sending Lora:");
   Serial.println(loraCommand);
 
-  lora.println(loraCommand); 
+  loraLink.sendMessage(loraCommand); 
 }
 
 void ICACHE_RAM_ATTR expanderInterrupt(void) {    
@@ -139,13 +173,14 @@ void ICACHE_RAM_ATTR expanderInterrupt(void) {
 }
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
   delay(200);
   lora.begin(9600);
   delay(200);
 
-  pinMode(LED_PIN,OUTPUT);
-  pinMode(INT_PIN,INPUT);
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(INT_PIN, INPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
 
   attachInterrupt(digitalPinToInterrupt(INT_PIN), expanderInterrupt, FALLING);
 
@@ -171,6 +206,9 @@ void setup() {
   server.onNotFound(handleNotFound);
   server.begin();
 
+  // Initialize library with callbacks: dataCallback, stateCallback, maxRetries, retryInterval
+  loraLink.begin(handleCustomData, handleStateChange, 10, 3000);
+
   Serial.println("Startup done");
 }
 
@@ -187,6 +225,8 @@ void handleRoot() {
   html += "<p><b>Closed Switch-1:</b> " + String(lastClosedState1) + "</p>";
   html += "<p><b>Closed Switch-2:</b> " + String(lastClosedState2) + "</p>";
   html += "<p><b>Latest Raw LoRA Message:</b> <pre>" + latestLoraMessage + "</pre></p>";
+  html += "<p><b>Latest LoRA Message SNR:</b> " + String(m_lastSnr) + "</p>";
+  html += "<p><b>Latest LoRA Message RSSI:</b> " + String(m_lastRssi) + "</p>";
   html += "<p><i>Page auto-refreshes every 3 seconds.</i></p>";
   html += "</body></html>";
   
@@ -199,11 +239,80 @@ void handleNotFound() {
 
 void loop() {
 
+  // Keep the library background processes active
+  loraLink.update();
+
+  // 1. TRIGGER CONDITION: If a relay flag is flipped on, but we haven't armed the relays yet
+  if ((turnRelay1On || turnRelay2On) && !relaysArmed && !buzzerIsOn) {
+    buzzerIsOn = true;
+    buzzer_count = 0;
+    pinState = true;
+    digitalWrite(BUZZER_PIN, HIGH);
+    last_buzzer_time = millis();
+  }
+
+
+  // 2. BACKGROUND TIMING LOGIC: Handles the asymmetric on/off intervals
+  if (buzzerIsOn) {
+    unsigned long current_time = millis();
+    
+    if (pinState) {
+      // Buzzer is ON -> check if it's time to turn it OFF
+      if (current_time - last_buzzer_time >= buzzer_on_time) {
+        digitalWrite(BUZZER_PIN, LOW);
+        pinState = false;
+        last_buzzer_time = current_time;
+        buzzer_count++; 
+      }
+    } else {
+      // Buzzer is OFF -> check if it's time to turn it ON or FINISH
+      if (current_time - last_buzzer_time >= buzzer_off_time) {
+        if (buzzer_count >= buzzer_total_count) {
+          // Reached target count! Stop buzzer and allow the relays to physically turn on
+          buzzerIsOn = false; 
+          relaysArmed = true; 
+        } else {
+          // Start the next beep
+          digitalWrite(BUZZER_PIN, HIGH);
+          pinState = true;
+          last_buzzer_time = current_time;
+        }
+      }
+    }
+  }
+
+
+//  if ((turnRelay1On || turnRelay2On) && !buzzerIsOn) {
+//    digitalWrite(BUZZER_PIN, HIGH);
+//    last_buzzer_time = millis();
+//    buzzerIsOn = true;
+//  }
+
+//  if (buzzerIsOn && (millis() - last_buzzer_time) >  buzzer_on_time) {
+  if (relaysArmed) {
+  //    digitalWrite(BUZZER_PIN, LOW);
+  //    buzzerIsOn = false;
+    if (turnRelay1On) {
+      turnRelay1On = false;
+      relay1On = 1;
+      expander.write(relayPin[0], LOW);
+    }
+    if (turnRelay2On) {
+      turnRelay2On = false;
+      relay1On = 1;
+      expander.write(relayPin[1], LOW);
+    }
+    onTime=millis();
+    relaysArmed = false;
+  }
+
+  // Relays only need to send a pulse to the garage door opener
   if (millis()-onTime> 900 && (relay1On==1 || relay2On==1)) {
     expander.write(relayPin[0], HIGH);
     expander.write(relayPin[1], HIGH);
     relay1On = 0;    
     relay2On = 0;
+    relaysArmed = false;
     Serial.println("Turning relays off");
   }
   
@@ -217,23 +326,23 @@ void loop() {
   // 1. Handle incoming web server clients
   server.handleClient();
 
-  if (lora.available()>0) {
-    
-    String incomingString = lora.readStringUntil('\n');
-    incomingString.trim(); // Remove extra carriage returns or spaces
-
-    Serial.print("Received LoraMessage:");
-    Serial.println(incomingString);
-
-    latestLoraMessage = incomingString;
-    
-    // Check if the message starts with "+RCV="
-    if (incomingString.startsWith("+RCV=")) {
-      parseAndHandleLoRaMessage(incomingString);
-    } else {
-      Serial.println("Lora Message not an RCV message");   
-    }
-  }
+//  if (lora.available()>0) {
+//    
+//    String incomingString = lora.readStringUntil('\n');
+//    incomingString.trim(); // Remove extra carriage returns or spaces
+//
+//    Serial.print("Received LoraMessage:");
+//    Serial.println(incomingString);
+//
+//    latestLoraMessage = incomingString;
+//    
+//    // Check if the message starts with "+RCV="
+//    if (incomingString.startsWith("+RCV=")) {
+//      parseAndHandleLoRaMessage(incomingString);
+//    } else {
+//      Serial.println("Lora Message not an RCV message");   
+//    }
+//  }
 
   if (millis()-isrStartTime > DEBOUNCE_DELAY && isrHandled==false) {
     
