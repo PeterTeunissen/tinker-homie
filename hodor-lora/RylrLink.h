@@ -1,6 +1,8 @@
 #ifndef RYLR_LINK_H
 #define RYLR_LINK_H
 
+#define LORA_DEBUG
+
 #include <Arduino.h>
 #include <SoftwareSerial.h>
 
@@ -28,6 +30,7 @@ class RylrLink {
     int rssiToPercentage(int rawRssi);
     
   private:
+    void slurp(String s);
     SoftwareSerial& _serial;
     DataCallback _onDataReceived;
     LedWriteCallback _onLedWrite;
@@ -49,6 +52,7 @@ class RylrLink {
     void updateLeds();
     int _lastSnr;
     int _lastRssi;
+    bool _dumpMe = true;
 };
 
 #endif
