@@ -303,6 +303,24 @@ void ledShow() {
   }
 }
 
+int rssiToPercentage(int rawRssi) {
+  // 1. Define standard signal thresholds
+  const int MIN_DBM = -100; // 0% Quality threshold
+  const int MAX_DBM = -30;  // 100% Quality threshold
+
+  // 2. Clamp the raw input using the built-in Arduino/C++ constraint tool
+  // This ensures values like -25 dBm don't return over 100%
+  #if defined(ARDUINO)
+      int clampedRssi = constrain(rawRssi, MIN_DBM, MAX_DBM);
+  #else
+      int clampedRssi = std::clamp(rawRssi, MIN_DBM, MAX_DBM);
+  #endif
+
+  // 3. Execute linear mapping: ((clamped - min) * 100) / (max - min)
+  return ((clampedRssi - MIN_DBM) * 100) / (MAX_DBM - MIN_DBM);
+}
+
+
 void parseAndPublishLoRaMessage(String rylrStr) {
 
   // Strip off the "+RCV=" string
@@ -367,7 +385,7 @@ void parseAndPublishLoRaMessage(String rylrStr) {
   String rssiStr = remainder.substring(0, comma3);
   String snrStr = remainder.substring(comma3 + 1);
 
-  int rssi = rssiStr.toInt();
+  int rssi = rssiToPercentage(rssiStr.toInt());
   int snr = snrStr.toInt();
 
   // 5. Build the JSON document
