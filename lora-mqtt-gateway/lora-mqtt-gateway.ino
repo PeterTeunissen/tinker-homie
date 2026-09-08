@@ -88,13 +88,32 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   }  
 }
 
+void slurpLora() {
+  if (loraSerial.available()>0) {
+    
+    String incomingString = loraSerial.readStringUntil('\n');
+    incomingString.trim(); // Remove extra carriage returns or spaces
+
+    Serial.print("Received LoraMessage:");
+    Serial.println(incomingString);    
+  }  
+}
+
 void setup() {
+
+  Serial.begin(9600);
+  loraSerial.begin(9600); // RYLR default baud rate
+
+  delay(1000);
+  loraSerial.println("AT+ADDRESS?");
+  slurpLora();
+  
+  delay(1000);  
+  loraSerial.println("AT+NETWORKID?");
+  slurpLora();
 
   WiFiManager wifiManager;
 
-  Serial.begin(115200);
-  loraSerial.begin(9600); // RYLR default baud rate
-  
   Serial.println("\nMounting LittleFS file system...");
 
   pinMode(TRIGGER_PIN, INPUT_PULLUP);
@@ -284,6 +303,24 @@ void ledShow() {
   }
 }
 
+int rssiToPercentage(int rawRssi) {
+  // 1. Define standard signal thresholds
+  const int MIN_DBM = -100; // 0% Quality threshold
+  const int MAX_DBM = -30;  // 100% Quality threshold
+
+  // 2. Clamp the raw input using the built-in Arduino/C++ constraint tool
+  // This ensures values like -25 dBm don't return over 100%
+  #if defined(ARDUINO)
+      int clampedRssi = constrain(rawRssi, MIN_DBM, MAX_DBM);
+  #else
+      int clampedRssi = std::clamp(rawRssi, MIN_DBM, MAX_DBM);
+  #endif
+
+  // 3. Execute linear mapping: ((clamped - min) * 100) / (max - min)
+  return ((clampedRssi - MIN_DBM) * 100) / (MAX_DBM - MIN_DBM);
+}
+
+
 void parseAndPublishLoRaMessage(String rylrStr) {
 
   // Strip off the "+RCV=" string
@@ -323,6 +360,13 @@ void parseAndPublishLoRaMessage(String rylrStr) {
   
   String message = payload.substring(dataStart, dataStart + len);
 
+  if (message.indexOf("PING") > -1) {
+    Serial.print("Replying PONG to PING from address:");
+    Serial.println(addrStr); 
+    loraSerial.println("AT+SEND=" + addrStr + ",4,PONG");
+    return;
+  }
+  
   // 5. Parse RSSI and SNR from the remaining string tail
   String remainder = payload.substring(dataStart + len);
   if (!remainder.startsWith(",")) {
@@ -341,14 +385,14 @@ void parseAndPublishLoRaMessage(String rylrStr) {
   String rssiStr = remainder.substring(0, comma3);
   String snrStr = remainder.substring(comma3 + 1);
 
-  int rssi = rssiStr.toInt();
+  int rssi = rssiToPercentage(rssiStr.toInt());
   int snr = snrStr.toInt();
 
   // 5. Build the JSON document
   // Allocate static memory on the stack (fast and safe for small JSONs)
   DynamicJsonDocument doc(1024);
    
-  doc["address"] = addrStr;
+  doc["address"] = address;
   doc["message"] = message;
   doc["rssi"] = rssi;
   doc["snr"] = snr;
