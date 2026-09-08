@@ -159,7 +159,8 @@ void parseAndHandleLoRaMessage(String message) {
 
 void loraSend() {
   char buf[200];
-  sprintf(buf,"{ source:\"hodor\", open_1:%d, open_2:%d, closed_1:%d, closed_2:%d, relay_1:%d, relay_2:%d }", lastOpenState1, lastOpenState2, lastClosedState1, lastClosedState2, relay1On, relay2On);
+  sprintf(buf,"{ \"source\":\"hodor\", \"open_1\":%d, \"open_2\":%d, \"closed_1\":%d, \"closed_2\":%d, \"relay_1\":%d, \"relay_2\":%d }", 
+    lastOpenState1, lastOpenState2, lastClosedState1, lastClosedState2, relay1On, relay2On);
   String loraCommand = String(buf);
 
   Serial.print("Sending Lora:");

@@ -393,7 +393,7 @@ void parseAndPublishLoRaMessage(String rylrStr) {
   DynamicJsonDocument doc(1024);
    
   doc["address"] = address;
-  doc["message"] = message;
+  doc["message"] = serialized(message);
   doc["rssi"] = rssi;
   doc["snr"] = snr;
 
